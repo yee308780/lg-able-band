@@ -70,7 +70,7 @@ describe('App login to home flow', () => {
 
     const errorText = (await screen.findByRole('alert')).textContent
     expect(errorText).toContain('올바른 이메일 형식으로 입력해주세요.')
-    expect(errorText).toContain('비밀번호는 8자 이상이고 영문과 숫자를 포함해야 합니다.')
+    expect(errorText).toContain('비밀번호는 8자 이상이며 영문과 숫자를 포함해야 합니다.')
     expect(errorText).toContain('비밀번호가 일치하지 않습니다.')
   })
 
@@ -83,7 +83,7 @@ describe('App login to home flow', () => {
     await user.type(screen.getByLabelText('이메일'), 'new-user@example.com')
     await user.type(screen.getByLabelText('비밀번호'), 'password1234')
     await user.type(screen.getByLabelText('비밀번호 확인'), 'password1234')
-    await user.click(screen.getByRole('radio', { name: '시각장애' }))
+    await user.click(screen.getByRole('radio', { name: '시각장애인' }))
     await user.click(screen.getByRole('button', { name: '가입하기' }))
 
     expect(await screen.findByRole('heading', { name: /able band 로그인/i })).toBeTruthy()
