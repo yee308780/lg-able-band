@@ -8,7 +8,8 @@
 }
 
 .login-screen,
-.placeholder-screen {
+.placeholder-screen,
+.signup-screen {
   display: grid;
   align-content: center;
   gap: 22px;
@@ -104,6 +105,10 @@ h3 {
   margin: 0;
   padding: 0;
   border: 0;
+}
+
+.compact-group {
+  gap: 8px;
 }
 
 .role-group legend {
@@ -363,6 +368,16 @@ button:disabled {
   font-weight: 800;
 }
 
+.login-panel .status-message {
+  padding: 12px;
+  background: #ecfdf5;
+  color: #166534;
+}
+
+.signup-panel {
+  gap: 14px;
+}
+
 .empty-state {
   color: #64748b;
 }
@@ -421,13 +436,22 @@ button:disabled {
   gap: 8px;
 }
 
-.settings-grid span {
+.settings-grid label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   border-radius: 8px;
   padding: 10px;
   background: #f1f5f9;
   color: #172033;
   font-size: 0.84rem;
   font-weight: 900;
+}
+
+.settings-grid input {
+  width: 18px;
+  height: 18px;
+  accent-color: #e11d48;
 }
 
 .bottom-tabs {
