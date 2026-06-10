@@ -165,6 +165,7 @@ h3 {
 .secondary-button:focus-visible,
 .sos-button:focus-visible,
 .logout-button:focus-visible,
+.device-add-button:focus-visible,
 .device-find-button:focus-visible,
 .device-product-card:focus-visible,
 .filter-chip:focus-visible,
@@ -842,6 +843,10 @@ button:disabled {
   gap: 8px;
 }
 
+.device-catalog-grid {
+  margin-top: 2px;
+}
+
 .device-product-card {
   position: relative;
   display: grid;
@@ -875,6 +880,21 @@ button:disabled {
 .device-product-card small {
   color: #64748b;
   font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.device-catalog-chip {
+  position: absolute;
+  top: 11px;
+  right: 11px;
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 0.68rem;
   font-weight: 900;
 }
 
@@ -1055,11 +1075,112 @@ button:disabled {
   gap: 10px;
 }
 
+.device-connected-card {
+  display: grid;
+  gap: 10px;
+}
+
+.device-add-button {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #d7e0ea;
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(244, 248, 252, 0.98) 100%);
+  color: #1e293b;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 900;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.device-add-button.active {
+  border-color: #bfdbfe;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(186, 230, 253, 0.92), transparent 34%),
+    #eff6ff;
+  color: #1d4ed8;
+}
+
 .device-register-card p:not(.card-label),
 .limit-message {
   color: #566274;
   font-size: 0.86rem;
   line-height: 1.45;
+}
+
+.device-add-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.device-add-hero {
+  display: grid;
+  gap: 6px;
+}
+
+.device-add-preview-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  border-radius: 12px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.device-add-preview-card strong,
+.device-toggle strong {
+  color: #172033;
+}
+
+.device-add-preview-card p,
+.device-toggle p {
+  color: #5d697d;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.device-add-static-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.device-add-static-grid div {
+  display: grid;
+  gap: 4px;
+  border-radius: 10px;
+  padding: 11px;
+  background: #f8fafc;
+}
+
+.device-add-static-grid span {
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.device-add-static-grid strong {
+  color: #172033;
+  font-size: 0.9rem;
+}
+
+.device-toggle {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+  border-radius: 12px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.device-toggle input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: #e11d48;
 }
 
 .limit-message {

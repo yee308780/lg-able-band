@@ -1,25 +1,351 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { createDevice, getDevices } from '../services/deviceService'
 
 const connectionLabels = {
   CONNECTED: '연결됨',
   WARNING: '주의 필요',
   DISCONNECTED: '연결 필요',
+  ERROR: '점검 필요',
 }
 
-export function DevicesTab({ devices, maxDeviceCount, uwb }) {
-  const [selectedDeviceId, setSelectedDeviceId] = useState(devices[0]?.deviceId ?? null)
+const deviceCatalog = [
+  {
+    templateId: 'washer',
+    name: '세탁기',
+    type: 'WASHER',
+    typeLabel: '세탁기',
+    room: '세탁실',
+    detail: '세탁 완료, 문 열림, 오류 알림을 Able Band로 전달합니다.',
+    primarySignal: '세탁 완료 알림',
+    locationSupported: true,
+    remoteEnabled: true,
+    defaultVendorDeviceId: 'thinq-washer-001',
+    management: ['세탁 완료 알림', '문 열림/오류 안내', 'UWB 위치 안내'],
+  },
+  {
+    templateId: 'tv',
+    name: 'TV',
+    type: 'TV',
+    typeLabel: 'TV',
+    room: '거실',
+    detail: '전원 상태, 볼륨, 채널 변경 안내를 확인합니다.',
+    primarySignal: '전원/볼륨 상태 안내',
+    locationSupported: false,
+    remoteEnabled: true,
+    defaultVendorDeviceId: 'thinq-tv-001',
+    management: ['전원 상태 안내', '볼륨/채널 안내', '리모컨 찾기'],
+  },
+  {
+    templateId: 'range',
+    name: '안전 전기레인지',
+    type: 'RANGE',
+    typeLabel: '전기레인지',
+    room: '주방',
+    detail: '과열, 조리 완료, 전원 상태를 생활 알림으로 안내합니다.',
+    primarySignal: '과열 경고',
+    locationSupported: false,
+    remoteEnabled: false,
+    defaultVendorDeviceId: 'thinq-range-001',
+    management: ['전원 상태 안내', '조리 완료 알림', '과열 경고'],
+  },
+  {
+    templateId: 'door',
+    name: '도어센서',
+    type: 'DOOR_SENSOR',
+    typeLabel: '도어센서',
+    room: '현관',
+    detail: '문 열림과 장시간 개방 상태를 즉시 안내합니다.',
+    primarySignal: '문 열림 알림',
+    locationSupported: false,
+    remoteEnabled: false,
+    defaultVendorDeviceId: 'thinq-door-001',
+    management: ['문 열림 알림', '장시간 열림 경고', '외출 상태 확인'],
+  },
+  {
+    templateId: 'air',
+    name: 'LG 공기질 센서',
+    type: 'AIR_SENSOR',
+    typeLabel: '공기질 센서',
+    room: '거실',
+    detail: '공기질, 습도, 미세먼지 상태를 생활 알림으로 전달합니다.',
+    primarySignal: '공기질 상태 안내',
+    locationSupported: true,
+    remoteEnabled: false,
+    defaultVendorDeviceId: 'thinq-air-001',
+    management: ['대기질 상태 안내', '온도/습도 안내', '미세먼지 안내'],
+  },
+  {
+    templateId: 'refrigerator',
+    name: '냉장고',
+    type: 'REFRIGERATOR',
+    typeLabel: '냉장고',
+    room: '주방',
+    detail: '문 열림, 온도 이상, 식재료 상태 알림을 관리합니다.',
+    primarySignal: '문 열림 알림',
+    locationSupported: false,
+    remoteEnabled: true,
+    defaultVendorDeviceId: 'thinq-fridge-001',
+    management: ['문 열림 알림', '온도 이상 안내', '식재료 찾기'],
+  },
+]
+
+export function DevicesTab({ devices: _devices, maxDeviceCount, uwb }) {
+  const [connectedDevices, setConnectedDevices] = useState([])
+  const [selectedDeviceId, setSelectedDeviceId] = useState(null)
   const [connectionMessage, setConnectionMessage] = useState('')
-  const selectedDevice = devices.find((device) => device.deviceId === selectedDeviceId) || devices[0]
-  const connectedCount = devices.filter((device) => device.connectionStatus === 'CONNECTED').length
-  const warningCount = devices.filter((device) => device.connectionStatus === 'WARNING').length
-  const locationSupportedCount = devices.filter((device) => device.locationSupported).length
+  const [isLoadingDevices, setIsLoadingDevices] = useState(false)
+  const [isDevicePickerOpen, setIsDevicePickerOpen] = useState(false)
+  const [screenMode, setScreenMode] = useState('list')
+  const [draft, setDraft] = useState(createEmptyDraft())
+  const [submitState, setSubmitState] = useState({
+    saving: false,
+    error: '',
+  })
+
+  const selectedDevice =
+    connectedDevices.find((device) => device.deviceId === selectedDeviceId) || null
+
+  const connectedCount = connectedDevices.filter(
+    (device) => device.connectionStatus === 'CONNECTED',
+  ).length
+  const warningCount = connectedDevices.filter(
+    (device) => device.connectionStatus === 'WARNING' || device.connectionStatus === 'ERROR',
+  ).length
+  const locationSupportedCount = connectedDevices.filter(
+    (device) => device.locationSupported,
+  ).length
+
+  const catalogByType = useMemo(
+    () => Object.fromEntries(deviceCatalog.map((item) => [item.type, item])),
+    [],
+  )
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadDevices() {
+      setIsLoadingDevices(true)
+
+      try {
+        const items = await getDevices()
+        if (!isMounted) {
+          return
+        }
+
+        const nextDevices = items.map((device) => enrichDevice(device, catalogByType))
+        setConnectedDevices(nextDevices)
+        setSelectedDeviceId((current) => current ?? nextDevices[0]?.deviceId ?? null)
+      } catch (error) {
+        if (!isMounted) {
+          return
+        }
+        setConnectionMessage(error.message || '연결된 가전을 불러오지 못했습니다.')
+      } finally {
+        if (isMounted) {
+          setIsLoadingDevices(false)
+        }
+      }
+    }
+
+    loadDevices()
+
+    return () => {
+      isMounted = false
+    }
+  }, [catalogByType])
 
   function handleFindNearbyDevices() {
     setConnectionMessage('연결 가능한 MVP 가전 6종을 확인했습니다.')
   }
 
+  function handleToggleDevicePicker() {
+    setIsDevicePickerOpen((current) => !current)
+    setConnectionMessage('')
+  }
+
+  function handleSelectConnectedDevice(deviceId) {
+    setSelectedDeviceId(deviceId)
+    setConnectionMessage('')
+  }
+
   function handleRefreshSelectedDevice() {
-    setConnectionMessage(`${selectedDevice.name} 상태를 방금 갱신했습니다.`)
+    if (!selectedDevice) {
+      return
+    }
+
+    setConnectionMessage(`${selectedDevice.name} 상태를 방금 새로고침했습니다.`)
+  }
+
+  function openCreatePage(template) {
+    setDraft({
+      vendor: 'LG_THINQ',
+      vendorDeviceId: template.defaultVendorDeviceId,
+      name: template.name,
+      type: template.type,
+      locationSupported: template.locationSupported,
+      remoteEnabled: template.remoteEnabled,
+    })
+    setSubmitState({ saving: false, error: '' })
+    setScreenMode('create')
+  }
+
+  function closeCreatePage() {
+    setScreenMode('list')
+    setSubmitState({ saving: false, error: '' })
+  }
+
+  function updateDraft(field, value) {
+    setDraft((current) => ({
+      ...current,
+      [field]: value,
+    }))
+    setSubmitState((current) => ({ ...current, error: '' }))
+  }
+
+  async function handleCreateDevice() {
+    if (!draft.name.trim()) {
+      setSubmitState({
+        saving: false,
+        error: '가전 이름을 입력해주세요.',
+      })
+      return
+    }
+
+    if (!draft.vendorDeviceId.trim()) {
+      setSubmitState({
+        saving: false,
+        error: 'vendorDeviceId를 입력해주세요.',
+      })
+      return
+    }
+
+    setSubmitState({ saving: true, error: '' })
+
+    try {
+      const savedDevice = await createDevice({
+        vendor: draft.vendor,
+        vendorDeviceId: draft.vendorDeviceId.trim(),
+        name: draft.name.trim(),
+        type: draft.type,
+        locationSupported: draft.locationSupported,
+        remoteEnabled: draft.remoteEnabled,
+      })
+
+      const nextDevice = enrichDevice(savedDevice, catalogByType)
+
+      setConnectedDevices((current) => [
+        nextDevice,
+        ...current.filter((item) => item.deviceId !== nextDevice.deviceId),
+      ])
+      setSelectedDeviceId(nextDevice.deviceId)
+      setIsDevicePickerOpen(false)
+      setScreenMode('list')
+      setConnectionMessage(`${nextDevice.name}를 연결했어요.`)
+      setSubmitState({ saving: false, error: '' })
+    } catch (error) {
+      setSubmitState({
+        saving: false,
+        error: error.message || '가전 연결에 실패했습니다.',
+      })
+    }
+  }
+
+  if (screenMode === 'create') {
+    const template = catalogByType[draft.type]
+
+    return (
+      <section className="tab-stack device-tab" aria-labelledby="device-add-title">
+        <section className="content-card device-add-editor">
+          <button className="text-button back-button" type="button" onClick={closeCreatePage}>
+            목록으로 돌아가기
+          </button>
+
+          <div className="device-add-hero">
+            <p className="card-label">가전 추가</p>
+            <h2 id="device-add-title">{template?.name || '가전'} 연결</h2>
+            <p>선택한 가전을 계정에 연결하고, 이후 알림과 UWB 안내에 사용할 수 있게 저장합니다.</p>
+          </div>
+
+          <div className="device-add-preview-card">
+            <DeviceIcon type={draft.type} />
+            <div>
+              <strong>{template?.name || draft.name}</strong>
+              <p>{template?.detail || '선택한 가전의 기본 정보를 확인합니다.'}</p>
+            </div>
+          </div>
+
+          <label className="field">
+            <span>가전 이름</span>
+            <input
+              type="text"
+              value={draft.name}
+              onChange={(event) => updateDraft('name', event.target.value)}
+              placeholder="예: 세탁기"
+            />
+          </label>
+
+          <label className="field">
+            <span>vendorDeviceId</span>
+            <input
+              type="text"
+              value={draft.vendorDeviceId}
+              onChange={(event) => updateDraft('vendorDeviceId', event.target.value)}
+              placeholder="예: thinq-washer-001"
+            />
+          </label>
+
+          <div className="device-add-static-grid">
+            <div>
+              <span>연동사</span>
+              <strong>{draft.vendor}</strong>
+            </div>
+            <div>
+              <span>기기 유형</span>
+              <strong>{template?.typeLabel || draft.type}</strong>
+            </div>
+          </div>
+
+          <label className="device-toggle">
+            <input
+              type="checkbox"
+              checked={draft.locationSupported}
+              onChange={(event) => updateDraft('locationSupported', event.target.checked)}
+            />
+            <div>
+              <strong>UWB 위치 안내 사용</strong>
+              <p>해당 가전을 UWB 찾기 대상으로 함께 저장합니다.</p>
+            </div>
+          </label>
+
+          <label className="device-toggle">
+            <input
+              type="checkbox"
+              checked={draft.remoteEnabled}
+              onChange={(event) => updateDraft('remoteEnabled', event.target.checked)}
+            />
+            <div>
+              <strong>원격 제어 사용</strong>
+              <p>원격 상태 조회와 연동 기능을 함께 저장합니다.</p>
+            </div>
+          </label>
+
+          {submitState.error ? (
+            <p className="form-error" role="alert">
+              {submitState.error}
+            </p>
+          ) : null}
+
+          <button
+            className="primary-button full-button"
+            type="button"
+            disabled={submitState.saving}
+            onClick={handleCreateDevice}
+          >
+            {submitState.saving ? '가전 연결 중...' : '가전 연결 완료'}
+          </button>
+        </section>
+      </section>
+    )
   }
 
   return (
@@ -27,7 +353,7 @@ export function DevicesTab({ devices, maxDeviceCount, uwb }) {
       <div className="content-card device-hero-card">
         <div>
           <p className="card-label">LG ThinQ 연결</p>
-          <h2 id="devices-title">우리집 MVP 가전을 연결해요.</h2>
+          <h2 id="devices-title">우리 집 MVP 가전을 연결해요.</h2>
           <p>세탁기, TV, 안전 전기레인지, 도어센서, 공기질 센서, 냉장고를 한 화면에서 관리합니다.</p>
         </div>
         <button className="device-find-button" type="button" onClick={handleFindNearbyDevices}>
@@ -50,9 +376,9 @@ export function DevicesTab({ devices, maxDeviceCount, uwb }) {
         </span>
         <span>
           <strong>
-            {devices.length}/{maxDeviceCount}
+            {connectedDevices.length}/{maxDeviceCount}
           </strong>
-          등록 슬롯
+          등록 현황
         </span>
       </div>
 
@@ -72,33 +398,95 @@ export function DevicesTab({ devices, maxDeviceCount, uwb }) {
         </button>
       </section>
 
-      <section className="device-product-grid" aria-label="MVP 연동 가전 목록">
-        {devices.map((device) => (
-          <button
-            className={
-              selectedDevice.deviceId === device.deviceId
-                ? 'device-product-card selected'
-                : 'device-product-card'
-            }
-            key={device.deviceId}
-            type="button"
-            aria-label={`${device.name} 관리 열기`}
-            aria-pressed={selectedDevice.deviceId === device.deviceId}
-            onClick={() => {
-              setSelectedDeviceId(device.deviceId)
-              setConnectionMessage('')
-            }}
+      <section className="device-register-card" aria-labelledby="device-register-title">
+        <div className="section-title-row">
+          <div>
+            <p className="card-label">연동 가전</p>
+            <h2 id="device-register-title">가전 추가</h2>
+          </div>
+          <span>{deviceCatalog.length}종</span>
+        </div>
+        <button
+          className={isDevicePickerOpen ? 'device-add-button active' : 'device-add-button'}
+          type="button"
+          aria-expanded={isDevicePickerOpen}
+          aria-controls="device-catalog-grid"
+          onClick={handleToggleDevicePicker}
+        >
+          {isDevicePickerOpen ? '추가 가능한 가전 닫기' : '가전 추가하기'}
+        </button>
+
+        {isDevicePickerOpen ? (
+          <section
+            id="device-catalog-grid"
+            className="device-product-grid device-catalog-grid"
+            aria-label="추가 가능한 가전 목록"
           >
-            <DeviceIcon type={device.type} />
-            <span className={`connection-dot connection-${device.connectionStatus.toLowerCase()}`} />
-            <strong>{device.name}</strong>
-            <small>{connectionLabels[device.connectionStatus] || device.connectionStatus}</small>
-          </button>
-        ))}
+            {deviceCatalog.map((device) => (
+              <button
+                className="device-product-card"
+                key={device.templateId}
+                type="button"
+                aria-label={`${device.name} 추가하기`}
+                onClick={() => openCreatePage(device)}
+              >
+                <DeviceIcon type={device.type} />
+                <span className="device-catalog-chip">추가 가능</span>
+                <strong>{device.name}</strong>
+                <small>{device.typeLabel}</small>
+              </button>
+            ))}
+          </section>
+        ) : null}
+      </section>
+
+      <section className="content-card device-connected-card" aria-labelledby="connected-devices-title">
+        <div className="section-title-row">
+          <div>
+            <p className="card-label">연결된 가전</p>
+            <h2 id="connected-devices-title">내 가전 목록</h2>
+          </div>
+          <span>{connectedDevices.length}개</span>
+        </div>
+
+        {isLoadingDevices ? (
+          <p className="status-message">연결된 가전을 불러오는 중입니다.</p>
+        ) : connectedDevices.length > 0 ? (
+          <div className="device-product-grid">
+            {connectedDevices.map((device) => (
+              <button
+                className={
+                  selectedDevice?.deviceId === device.deviceId
+                    ? 'device-product-card selected'
+                    : 'device-product-card'
+                }
+                key={device.deviceId}
+                type="button"
+                aria-label={`${device.name} 관리 열기`}
+                aria-pressed={selectedDevice?.deviceId === device.deviceId}
+                onClick={() => handleSelectConnectedDevice(device.deviceId)}
+              >
+                <DeviceIcon type={device.type} />
+                <span
+                  className={`connection-dot connection-${device.connectionStatus.toLowerCase()}`}
+                />
+                <strong>{device.name}</strong>
+                <small>{connectionLabels[device.connectionStatus] || device.connectionStatus}</small>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="empty-state">
+            아직 연결된 가전이 없습니다. 위의 `가전 추가하기`로 먼저 연결해주세요.
+          </p>
+        )}
       </section>
 
       {selectedDevice ? (
-        <section className="content-card device-manager-card" aria-label={`${selectedDevice.name} 관리`}>
+        <section
+          className="content-card device-manager-card"
+          aria-label={`${selectedDevice.name} 관리`}
+        >
           <div className="section-title-row">
             <div>
               <p className="card-label">{selectedDevice.room}</p>
@@ -133,7 +521,11 @@ export function DevicesTab({ devices, maxDeviceCount, uwb }) {
             ))}
           </div>
           <div className="device-action-grid">
-            <button className="secondary-button compact-button" type="button" onClick={handleRefreshSelectedDevice}>
+            <button
+              className="secondary-button compact-button"
+              type="button"
+              onClick={handleRefreshSelectedDevice}
+            >
               상태 새로고침
             </button>
             <button className="secondary-button compact-button" type="button">
@@ -152,9 +544,68 @@ export function DevicesTab({ devices, maxDeviceCount, uwb }) {
   )
 }
 
+function createEmptyDraft() {
+  return {
+    vendor: 'LG_THINQ',
+    vendorDeviceId: '',
+    name: '',
+    type: 'WASHER',
+    locationSupported: false,
+    remoteEnabled: false,
+  }
+}
+
+function enrichDevice(device, catalogByType) {
+  const template = catalogByType[device.type] || createFallbackTemplate(device)
+
+  return {
+    ...template,
+    ...device,
+    room: template.room,
+    typeLabel: template.typeLabel,
+    detail: template.detail,
+    primarySignal: template.primarySignal,
+    management: template.management,
+    lastEventLabel: formatLastEvent(device.lastEventAt),
+  }
+}
+
+function createFallbackTemplate(device) {
+  return {
+    name: device.name,
+    type: device.type,
+    typeLabel: device.type,
+    room: '기기 위치',
+    detail: '연결된 가전의 상태를 확인할 수 있습니다.',
+    primarySignal: '기기 상태 안내',
+    management: ['상태 확인'],
+  }
+}
+
+function formatLastEvent(value) {
+  if (!value) {
+    return '방금 연결됨'
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return '최근 이벤트 확인'
+  }
+
+  return date.toLocaleString('ko-KR', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function DeviceIcon({ type }) {
   return (
-    <span className={`appliance-icon appliance-${type.toLowerCase().replace('_', '-')}`} aria-hidden="true">
+    <span
+      className={`appliance-icon appliance-${type.toLowerCase().replace('_', '-')}`}
+      aria-hidden="true"
+    >
       {renderDeviceIcon(type)}
     </span>
   )

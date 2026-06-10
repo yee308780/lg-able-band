@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { confirmAlert, getAlerts, replayAlert } from '../services/alertService'
 
 const typeLabels = {
   LIFE: '생활',
@@ -28,44 +29,122 @@ const filters = [
   { id: 'LIFE', label: '생활' },
 ]
 
-export function AlertsTab({ alerts }) {
-  const [alertItems, setAlertItems] = useState(alerts)
+export function AlertsTab() {
+  const [alertItems, setAlertItems] = useState([])
   const [activeFilter, setActiveFilter] = useState('ALL')
   const [selectedAlertId, setSelectedAlertId] = useState(null)
   const [feedbackMessage, setFeedbackMessage] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState('')
+
   const selectedAlert =
     selectedAlertId === null
       ? null
-      : alertItems.find((alert) => alert.alertId === selectedAlertId) || alertItems[0]
+      : alertItems.find((alert) => alert.alertId === selectedAlertId) || null
+
   const filteredAlerts = useMemo(
     () => alertItems.filter((alert) => filterAlert(alert, activeFilter)),
     [activeFilter, alertItems],
   )
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadAlerts() {
+      setIsLoading(true)
+      setErrorMessage('')
+
+      try {
+        const items = await getAlerts({ limit: 20 })
+        if (!isMounted) {
+          return
+        }
+
+        setAlertItems(items)
+      } catch (error) {
+        if (!isMounted) {
+          return
+        }
+
+        setErrorMessage(error.message || '알림 목록을 불러오지 못했습니다.')
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    loadAlerts()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   function handleSelectAlert(alertId) {
     setSelectedAlertId(alertId)
     setFeedbackMessage('')
   }
 
-  function handleConfirmAlert(alertId) {
-    setAlertItems((currentAlerts) => currentAlerts.filter((alert) => alert.alertId !== alertId))
-    setSelectedAlertId(null)
-    setFeedbackMessage('확인 완료 처리했습니다.')
+  async function handleConfirmAlert(alertId) {
+    try {
+      const response = await confirmAlert(alertId)
+      setAlertItems((currentAlerts) =>
+        currentAlerts.map((alert) =>
+          alert.alertId === alertId
+            ? {
+                ...alert,
+                status: response.status,
+              }
+            : alert,
+        ),
+      )
+      setFeedbackMessage('확인 완료 처리했습니다.')
+    } catch (error) {
+      setFeedbackMessage(error.message || '알림 확인 처리에 실패했습니다.')
+    }
   }
 
-  function handleReplayAlert(alert) {
-    setAlertItems((currentAlerts) =>
-      currentAlerts.map((item) =>
-        item.alertId === alert.alertId && item.status === 'UNREAD'
-          ? {
-              ...item,
-              status: 'REPLAYED',
-            }
-          : item,
-      ),
+  async function handleReplayAlert(alert) {
+    try {
+      const response = await replayAlert(alert.alertId)
+
+      setAlertItems((currentAlerts) =>
+        currentAlerts.map((item) =>
+          item.alertId === alert.alertId
+            ? {
+                ...item,
+                status: response.status,
+                voiceGuide: response.voiceGuide || item.voiceGuide,
+              }
+            : item,
+        ),
+      )
+
+      const replayText = response.voiceGuide || alert.voiceGuide || alert.message
+      speakAlert(replayText)
+      setFeedbackMessage(`다시 듣기: ${replayText}`)
+    } catch (error) {
+      setFeedbackMessage(error.message || '다시 듣기 처리에 실패했습니다.')
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <section className="tab-stack alert-tab" aria-label="실시간 알림 목록">
+        <p className="status-message">알림 목록을 불러오는 중입니다.</p>
+      </section>
     )
-    speakAlert(alert.voiceGuide || alert.message)
-    setFeedbackMessage(`다시 듣기: ${alert.voiceGuide || alert.message}`)
+  }
+
+  if (errorMessage) {
+    return (
+      <section className="tab-stack alert-tab" aria-label="실시간 알림 목록">
+        <p className="form-error" role="alert">
+          {errorMessage}
+        </p>
+      </section>
+    )
   }
 
   return (
@@ -125,7 +204,8 @@ export function AlertsTab({ alerts }) {
                       <h3>{alert.title}</h3>
                       <p className="alert-card-message">{alert.message}</p>
                       <small className="alert-meta-line">
-                        {alert.deviceName} · {alert.locationName} · {formatAlertTime(alert.occurredAt)}
+                        {alert.deviceName || '알림 기기'} · {alert.locationName || '위치 정보 없음'} ·{' '}
+                        {formatAlertTime(alert.occurredAt)}
                       </small>
                     </div>
                   </div>
@@ -142,9 +222,10 @@ export function AlertsTab({ alerts }) {
                       className="primary-button compact-button"
                       type="button"
                       aria-label={`${alert.title} 확인 완료`}
+                      disabled={alert.status === 'CONFIRMED'}
                       onClick={() => handleConfirmAlert(alert.alertId)}
                     >
-                      확인 완료
+                      {alert.status === 'CONFIRMED' ? '확인됨' : '확인 완료'}
                     </button>
                   </div>
                 </article>
@@ -187,26 +268,26 @@ function AlertDetail({ alert, feedbackMessage, onBack, onConfirm, onReplay }) {
         </div>
         <div>
           <dt>발생 위치</dt>
-          <dd>{alert.locationName}</dd>
+          <dd>{alert.locationName || '위치 정보 없음'}</dd>
         </div>
         <div>
           <dt>발생 기기</dt>
-          <dd>{alert.device?.name || alert.deviceName}</dd>
+          <dd>{alert.device?.name || alert.deviceName || '알림 기기'}</dd>
         </div>
         <div>
           <dt>발생 시간</dt>
-          <dd>{formatAlertTime(alert.occurredAt)}</dd>
+          <dd>{formatAlertDateTime(alert.occurredAt)}</dd>
         </div>
       </dl>
 
       <section className="voice-guide-card" aria-label="음성 안내 문구">
         <p className="card-label">다시 듣기 문구</p>
-        <strong>{alert.voiceGuide}</strong>
+        <strong>{alert.voiceGuide || alert.message}</strong>
       </section>
 
       <section className="recommended-action-card" aria-label="추천 후속 행동">
         <p className="card-label">추천 행동</p>
-        <strong>{alert.recommendedAction}</strong>
+        <strong>{alert.recommendedAction || '알림 내용을 먼저 확인해 주세요.'}</strong>
       </section>
 
       {alert.requiresGuardianNotify ? (
@@ -262,7 +343,27 @@ function isUrgentAlert(alert) {
 }
 
 function formatAlertTime(isoString) {
-  return isoString.slice(11, 16)
+  if (!isoString) {
+    return '--:--'
+  }
+
+  return new Date(isoString).toLocaleTimeString('ko-KR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function formatAlertDateTime(isoString) {
+  if (!isoString) {
+    return '시간 정보 없음'
+  }
+
+  return new Date(isoString).toLocaleString('ko-KR', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 function speakAlert(text) {

@@ -1,0 +1,239 @@
+package com.lgableband.device;
+
+import com.lgableband.auth.MvpDataService;
+import com.lgableband.common.ApiException;
+import com.lgableband.common.ConnectionStatus;
+import com.lgableband.common.DeviceType;
+import com.lgableband.mock.MockDataStore;
+import java.sql.PreparedStatement;
+import java.sql.Statement;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Map;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.stereotype.Service;
+
+@Service
+public class DeviceService {
+
+	private final ObjectProvider<JdbcTemplate> jdbcTemplateProvider;
+	private final MvpDataService dataService;
+	private final MockDataStore mockDataStore;
+
+	public DeviceService(
+		ObjectProvider<JdbcTemplate> jdbcTemplateProvider,
+		MvpDataService dataService,
+		MockDataStore mockDataStore
+	) {
+		this.jdbcTemplateProvider = jdbcTemplateProvider;
+		this.dataService = dataService;
+		this.mockDataStore = mockDataStore;
+	}
+
+	public List<DeviceSummary> devices(String authorization) {
+		JdbcTemplate jdbcTemplate = jdbcTemplate();
+		MvpDataService.CurrentUser user = this.dataService.currentUser(authorization);
+
+		if (jdbcTemplate == null) {
+			return this.mockDataStore.devices(user.userId()).stream()
+				.map(device -> new DeviceSummary(
+					device.deviceId(),
+					device.name(),
+					device.type(),
+					device.connectionStatus(),
+					device.locationSupported(),
+					device.lastEventAt(),
+					null,
+					null,
+					false
+				))
+				.toList();
+		}
+
+		return jdbcTemplate.query(
+			"""
+			SELECT d.device_id,
+			       d.name,
+			       d.device_type,
+			       d.connection_status,
+			       d.location_supported,
+			       d.vendor_device_id,
+			       d.remote_enabled,
+			       COALESCE(MAX(de.occurred_at), d.created_at) AS last_event_at
+			FROM device d
+			LEFT JOIN device_event de ON de.device_id = d.device_id
+			WHERE d.user_id = ?
+			GROUP BY d.device_id, d.name, d.device_type, d.connection_status,
+			         d.location_supported, d.vendor_device_id, d.remote_enabled, d.created_at
+			ORDER BY last_event_at DESC, d.device_id DESC
+			""",
+			(rs, rowNum) -> new DeviceSummary(
+				rs.getLong("device_id"),
+				rs.getString("name"),
+				DeviceType.valueOf(rs.getString("device_type")),
+				ConnectionStatus.valueOf(rs.getString("connection_status")),
+				rs.getBoolean("location_supported"),
+				toOffsetDateTime(rs.getObject("last_event_at", LocalDateTime.class)),
+				null,
+				rs.getString("vendor_device_id"),
+				rs.getBoolean("remote_enabled")
+			),
+			user.userId()
+		);
+	}
+
+	public DeviceSummary createDevice(String authorization, DeviceCreateRequest request) {
+		JdbcTemplate jdbcTemplate = jdbcTemplate();
+		MvpDataService.CurrentUser user = this.dataService.currentUser(authorization);
+
+		if (jdbcTemplate == null) {
+			MockDataStore.Device device = this.mockDataStore.addDevice(
+				user.userId(),
+				request.name(),
+				request.type(),
+				request.locationSupported()
+			);
+			return new DeviceSummary(
+				device.deviceId(),
+				device.name(),
+				device.type(),
+				device.connectionStatus(),
+				device.locationSupported(),
+				device.lastEventAt(),
+				request.vendor(),
+				request.vendorDeviceId(),
+				request.remoteEnabled()
+			);
+		}
+
+		try {
+			long deviceId = insertDevice(jdbcTemplate, user.userId(), request);
+			insertRegistrationEvent(jdbcTemplate, deviceId, request);
+			return new DeviceSummary(
+				deviceId,
+				request.name(),
+				request.type(),
+				ConnectionStatus.CONNECTED,
+				request.locationSupported(),
+				OffsetDateTime.now(),
+				request.vendor(),
+				request.vendorDeviceId(),
+				request.remoteEnabled()
+			);
+		} catch (DuplicateKeyException ex) {
+			throw new ApiException(HttpStatus.CONFLICT, "DUPLICATED_DEVICE", "이미 연결된 기기입니다.");
+		}
+	}
+
+	private long insertDevice(JdbcTemplate jdbcTemplate, long userId, DeviceCreateRequest request) {
+		KeyHolder keyHolder = new GeneratedKeyHolder();
+		jdbcTemplate.update(connection -> {
+			PreparedStatement ps = connection.prepareStatement(
+				"""
+				INSERT INTO device (
+					user_id,
+					device_type,
+					vendor_device_id,
+					name,
+					connection_status,
+					location_supported,
+					remote_enabled
+				) VALUES (?, ?, ?, ?, ?, ?, ?)
+				""",
+				Statement.RETURN_GENERATED_KEYS
+			);
+			ps.setLong(1, userId);
+			ps.setString(2, request.type().name());
+			ps.setString(3, blankToNull(request.vendorDeviceId()));
+			ps.setString(4, request.name());
+			ps.setString(5, ConnectionStatus.CONNECTED.name());
+			ps.setBoolean(6, request.locationSupported());
+			ps.setBoolean(7, request.remoteEnabled());
+			return ps;
+		}, keyHolder);
+		return keyHolder.getKey().longValue();
+	}
+
+	private void insertRegistrationEvent(JdbcTemplate jdbcTemplate, long deviceId, DeviceCreateRequest request) {
+		jdbcTemplate.update(
+			"""
+			INSERT INTO device_event (device_id, event_type, event_level, payload_json, occurred_at)
+			VALUES (?, 'LIFE', 'LOW', ?, ?)
+			""",
+			deviceId,
+			registrationPayload(request),
+			LocalDateTime.now()
+		);
+	}
+
+	private String registrationPayload(DeviceCreateRequest request) {
+		Map<String, Object> payload = Map.of(
+			"kind", "DEVICE_REGISTERED",
+			"vendor", request.vendor(),
+			"vendorDeviceId", blankToNull(request.vendorDeviceId()) == null ? "" : request.vendorDeviceId(),
+			"name", request.name(),
+			"type", request.type().name(),
+			"locationSupported", request.locationSupported(),
+			"remoteEnabled", request.remoteEnabled()
+		);
+		return """
+			{"kind":"%s","vendor":"%s","vendorDeviceId":"%s","name":"%s","type":"%s","locationSupported":%s,"remoteEnabled":%s}
+			""".formatted(
+			escapeJson(String.valueOf(payload.get("kind"))),
+			escapeJson(String.valueOf(payload.get("vendor"))),
+			escapeJson(String.valueOf(payload.get("vendorDeviceId"))),
+			escapeJson(String.valueOf(payload.get("name"))),
+			escapeJson(String.valueOf(payload.get("type"))),
+			payload.get("locationSupported"),
+			payload.get("remoteEnabled")
+		).trim();
+	}
+
+	private OffsetDateTime toOffsetDateTime(LocalDateTime dateTime) {
+		return dateTime == null ? null : dateTime.atOffset(ZoneOffset.ofHours(9));
+	}
+
+	private String blankToNull(String value) {
+		return value == null || value.isBlank() ? null : value;
+	}
+
+	private String escapeJson(String value) {
+		return value
+			.replace("\\", "\\\\")
+			.replace("\"", "\\\"");
+	}
+
+	private JdbcTemplate jdbcTemplate() {
+		return this.jdbcTemplateProvider.getIfAvailable();
+	}
+
+	public record DeviceSummary(
+		long deviceId,
+		String name,
+		DeviceType type,
+		ConnectionStatus connectionStatus,
+		boolean locationSupported,
+		OffsetDateTime lastEventAt,
+		String vendor,
+		String vendorDeviceId,
+		boolean remoteEnabled
+	) {
+	}
+
+	public record DeviceCreateRequest(
+		String vendor,
+		String vendorDeviceId,
+		String name,
+		DeviceType type,
+		boolean locationSupported,
+		boolean remoteEnabled
+	) {
+	}
+}

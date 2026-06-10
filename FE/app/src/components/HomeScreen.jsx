@@ -133,7 +133,7 @@ export function HomeScreen({ session, onLogout }) {
             onOpenDevices={() => handleTabChange('devices')}
           />
         ) : null}
-        {activeTab === 'alerts' ? <AlertsTab alerts={preview.alerts} /> : null}
+        {activeTab === 'alerts' ? <AlertsTab /> : null}
         {activeTab === 'devices' ? (
           <DevicesTab
             devices={preview.devices}

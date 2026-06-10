@@ -2,8 +2,6 @@ package com.lgableband.alert;
 
 import com.lgableband.common.AlertStatus;
 import com.lgableband.common.AlertType;
-import com.lgableband.mock.MockDataStore;
-import com.lgableband.mock.MockDataStore.Alert;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,10 +15,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/alerts")
 public class AlertController {
 
-	private final MockDataStore store;
+	private final AlertService alertService;
 
-	public AlertController(MockDataStore store) {
-		this.store = store;
+	public AlertController(AlertService alertService) {
+		this.alertService = alertService;
 	}
 
 	@GetMapping
@@ -30,22 +28,47 @@ public class AlertController {
 		@RequestParam(required = false) AlertStatus status,
 		@RequestParam(defaultValue = "20") int limit
 	) {
-		long userId = this.store.requireUser(authorization).userId();
-		return new AlertListResponse(this.store.alerts(userId, type, status, limit));
+		return new AlertListResponse(this.alertService.alerts(authorization, type, status, limit));
 	}
 
 	@GetMapping("/{alertId}")
-	public Alert alert(@RequestHeader("Authorization") String authorization, @PathVariable long alertId) {
-		long userId = this.store.requireUser(authorization).userId();
-		return this.store.alert(userId, alertId);
+	public AlertService.AlertView alert(
+		@RequestHeader("Authorization") String authorization,
+		@PathVariable long alertId
+	) {
+		return this.alertService.alert(authorization, alertId);
 	}
 
 	@PostMapping("/{alertId}/confirm")
-	public Alert confirm(@RequestHeader("Authorization") String authorization, @PathVariable long alertId) {
-		long userId = this.store.requireUser(authorization).userId();
-		return this.store.confirmAlert(userId, alertId);
+	public AlertService.StatusResponse confirm(
+		@RequestHeader("Authorization") String authorization,
+		@PathVariable long alertId
+	) {
+		return this.alertService.confirm(authorization, alertId);
 	}
 
-	public record AlertListResponse(List<Alert> items) {
+	@PostMapping("/{alertId}/replay")
+	public ReplayResponse replay(
+		@RequestHeader("Authorization") String authorization,
+		@PathVariable long alertId
+	) {
+		AlertService.StatusResponse response = this.alertService.replay(authorization, alertId);
+		return new ReplayResponse(
+			response.alertId(),
+			response.status(),
+			response.replay() == null ? null : response.replay().voiceGuide(),
+			response.replay() == null ? null : response.replay().replayedAt()
+		);
+	}
+
+	public record AlertListResponse(List<AlertService.AlertView> items) {
+	}
+
+	public record ReplayResponse(
+		long alertId,
+		AlertStatus status,
+		String voiceGuide,
+		java.time.OffsetDateTime replayedAt
+	) {
 	}
 }

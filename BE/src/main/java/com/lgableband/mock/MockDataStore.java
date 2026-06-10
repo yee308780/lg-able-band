@@ -29,6 +29,7 @@ public class MockDataStore {
 	private final AtomicLong userSequence = new AtomicLong(1);
 	private final AtomicLong guardianProfileSequence = new AtomicLong(1);
 	private final AtomicLong guardianSequence = new AtomicLong(1);
+	private final AtomicLong deviceSequence = new AtomicLong(12);
 	private final AtomicLong emergencySequence = new AtomicLong(300);
 	private final AtomicLong uwbSequence = new AtomicLong(9000);
 
@@ -182,6 +183,19 @@ public class MockDataStore {
 		return this.devicesByUserId.getOrDefault(userId, List.of());
 	}
 
+	public Device addDevice(long userId, String name, DeviceType type, boolean locationSupported) {
+		Device device = new Device(
+			this.deviceSequence.incrementAndGet(),
+			name,
+			type,
+			ConnectionStatus.CONNECTED,
+			locationSupported,
+			OffsetDateTime.now()
+		);
+		this.devicesByUserId.computeIfAbsent(userId, ignored -> new ArrayList<>()).add(0, device);
+		return device;
+	}
+
 	public List<Alert> alerts(long userId, AlertType type, AlertStatus status, int limit) {
 		return this.alertsByUserId.getOrDefault(userId, List.of()).stream()
 			.filter(alert -> type == null || alert.type() == type)
@@ -204,6 +218,19 @@ public class MockDataStore {
 			Alert alert = alerts.get(index);
 			if (alert.alertId() == alertId) {
 				Alert updated = alert.withStatus(AlertStatus.CONFIRMED);
+				alerts.set(index, updated);
+				return updated;
+			}
+		}
+		throw new ApiException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "알림을 찾을 수 없습니다.");
+	}
+
+	public Alert replayAlert(long userId, long alertId) {
+		List<Alert> alerts = this.alertsByUserId.getOrDefault(userId, new ArrayList<>());
+		for (int index = 0; index < alerts.size(); index++) {
+			Alert alert = alerts.get(index);
+			if (alert.alertId() == alertId) {
+				Alert updated = alert.withStatus(AlertStatus.REPLAYED);
 				alerts.set(index, updated);
 				return updated;
 			}

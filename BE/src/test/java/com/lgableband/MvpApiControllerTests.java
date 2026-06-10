@@ -77,6 +77,35 @@ class MvpApiControllerTests {
 	}
 
 	@Test
+	void alertsCanBeLoadedAndReplayed() throws Exception {
+		MvcResult login = this.mockMvc.perform(post("/api/auth/login")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "role": "USER",
+					  "email": "user@example.com",
+					  "password": "password1234"
+					}
+					"""))
+			.andExpect(status().isOk())
+			.andReturn();
+
+		String token = login.getResponse().getContentAsString()
+			.replaceAll(".*\\\"accessToken\\\":\\\"([^\\\"]+)\\\".*", "$1");
+
+		this.mockMvc.perform(get("/api/alerts").header("Authorization", "Bearer " + token))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.items[0].alertId").exists())
+			.andExpect(jsonPath("$.items[0].voiceGuide").exists())
+			.andExpect(jsonPath("$.items[0].recommendedAction").exists());
+
+		this.mockMvc.perform(post("/api/alerts/101/replay").header("Authorization", "Bearer " + token))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.status").value("REPLAYED"))
+			.andExpect(jsonPath("$.voiceGuide", not(blankOrNullString())));
+	}
+
+	@Test
 	void guardianCanSignupAndLogin() throws Exception {
 		this.mockMvc.perform(post("/api/auth/signup")
 				.contentType(MediaType.APPLICATION_JSON)
