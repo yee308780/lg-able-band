@@ -48,16 +48,8 @@ export function AlertsTab({ alerts }) {
   }
 
   function handleConfirmAlert(alertId) {
-    setAlertItems((currentAlerts) =>
-      currentAlerts.map((alert) =>
-        alert.alertId === alertId
-          ? {
-              ...alert,
-              status: 'CONFIRMED',
-            }
-          : alert,
-      ),
-    )
+    setAlertItems((currentAlerts) => currentAlerts.filter((alert) => alert.alertId !== alertId))
+    setSelectedAlertId(null)
     setFeedbackMessage('확인 완료 처리했습니다.')
   }
 
@@ -149,11 +141,10 @@ export function AlertsTab({ alerts }) {
                     <button
                       className="primary-button compact-button"
                       type="button"
-                      disabled={alert.status === 'CONFIRMED'}
-                      aria-label={`${alert.title} ${alert.status === 'CONFIRMED' ? '확인 완료됨' : '확인 완료'}`}
+                      aria-label={`${alert.title} 확인 완료`}
                       onClick={() => handleConfirmAlert(alert.alertId)}
                     >
-                      {alert.status === 'CONFIRMED' ? '확인 완료됨' : '확인 완료'}
+                      확인 완료
                     </button>
                   </div>
                 </article>
