@@ -1,9 +1,10 @@
 :root {
-  font-family: "Segoe UI", "Noto Sans KR", sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color: #111827;
-  background: #ffffff;
+  font-family:
+    "Segoe UI",
+    "Noto Sans KR",
+    sans-serif;
+  color: #121826;
+  background: #dfe7f2;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -14,12 +15,23 @@
   box-sizing: border-box;
 }
 
-body {
-  margin: 0;
+html,
+body,
+#root {
   min-width: 320px;
   min-height: 100vh;
+  margin: 0;
 }
 
-#root {
-  min-height: 100vh;
+body {
+  overflow-x: hidden;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
 }
