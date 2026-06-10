@@ -16,7 +16,7 @@ export function LoginScreen({
       <section className="login-hero">
         <p className="eyebrow">LG Able Band</p>
         <h1 id="login-title">Able Band 로그인</h1>
-        <p className="hero-copy">역할을 선택하고 오늘의 안전 상태를 확인하세요.</p>
+        <p className="hero-copy">역할을 선택하고 오늘의 안전 상태를 확인해보세요.</p>
       </section>
 
       <form className="login-panel" onSubmit={onSubmit}>

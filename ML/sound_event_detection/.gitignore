@@ -1,0 +1,13 @@
+.venv/
+src/__pycache__/
+src/*.pyc
+data/enrollments/*
+!data/enrollments/.gitkeep
+data/test_audio/*
+!data/test_audio/.gitkeep
+outputs/embeddings/*
+!outputs/embeddings/.gitkeep
+outputs/registry/*
+!outputs/registry/.gitkeep
+outputs/reports/*
+!outputs/reports/.gitkeep

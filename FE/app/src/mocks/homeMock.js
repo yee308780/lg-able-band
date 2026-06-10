@@ -1,12 +1,12 @@
 export const mockHomeSummary = {
   user: {
     userId: 1,
-    name: '홍길동',
+    name: '소희',
     accessibilityType: 'VISUAL',
   },
   safetyStatus: {
     level: 'SAFE',
-    message: '현재 위험 알림이 없습니다.',
+    message: '현재 위험 알림은 없습니다.',
     lastCheckedAt: '2026-06-10T14:30:00+09:00',
   },
   recentAlerts: [
@@ -15,7 +15,7 @@ export const mockHomeSummary = {
       type: 'LIFE',
       severity: 'LOW',
       title: '세탁 완료',
-      message: '세탁이 완료되었습니다. 건조기로 옮겨주세요.',
+      message: '세탁이 끝났습니다. 건조기로 옮겨주세요.',
       deviceName: '세탁기',
       occurredAt: '2026-06-10T14:20:00+09:00',
       status: 'UNREAD',
@@ -25,7 +25,7 @@ export const mockHomeSummary = {
       type: 'DANGER',
       severity: 'HIGH',
       title: '가스레인지 확인',
-      message: '주방에서 장시간 사용 신호가 감지되었습니다.',
+      message: '주방에서 위험 신호가 감지되었습니다.',
       deviceName: '가스레인지',
       occurredAt: '2026-06-10T13:55:00+09:00',
       status: 'READ',

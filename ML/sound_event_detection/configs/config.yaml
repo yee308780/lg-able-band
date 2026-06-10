@@ -1,0 +1,25 @@
+project:
+  experiment_name: able-band-sound-event-detection
+  seed: 42
+  device: auto
+
+embedding:
+  pretrained_model_name: MIT/ast-finetuned-audioset-10-10-0.4593
+  pooling_strategy: mean
+
+matching:
+  similarity_threshold: 0.8
+  top_k: 3
+  unknown_label: unknown
+
+data:
+  enrollments_dir: data/enrollments
+  test_audio_dir: data/test_audio
+  sample_rate: 16000
+  clip_duration_seconds: 5.0
+
+outputs:
+  reports_dir: outputs/reports
+  registry_dir: outputs/registry
+  embeddings_dir: outputs/embeddings
+  registry_file: outputs/registry/registry.json
