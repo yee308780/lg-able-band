@@ -1,0 +1,444 @@
+.living-signal-preview-shell {
+  min-height: 100vh;
+  margin: 0;
+  padding: 24px 16px;
+  background: #f5f6f8;
+}
+
+.living-signal-preview-frame {
+  width: min(100%, 375px);
+  min-height: 667px;
+  margin: 0 auto;
+  padding: 20px 16px 24px;
+  border-radius: 24px;
+  background: linear-gradient(180deg, #ffffff 0%, #f5f6f8 100%);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.12);
+}
+
+.living-signal-screen {
+  display: grid;
+  gap: 14px;
+  color: #121826;
+}
+
+.living-signal-top-row,
+.living-signal-section-row,
+.living-signal-item-main,
+.living-signal-recorder-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.living-signal-top-row {
+  align-items: center;
+}
+
+.living-signal-header,
+.living-signal-list-section,
+.living-signal-detect-section,
+.living-signal-history,
+.living-signal-mic-section {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #dfe6ef;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+}
+
+.living-signal-header {
+  gap: 8px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(255, 228, 236, 0.75), transparent 34%),
+    linear-gradient(180deg, #ffffff 0%, #fff8fa 100%);
+}
+
+.living-signal-kicker,
+.living-signal-type,
+.living-signal-page-badge {
+  margin: 0;
+  color: #8b5a68;
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.living-signal-type,
+.living-signal-page-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #fff1f4;
+  color: #be123c;
+}
+
+.living-signal-header h2,
+.living-signal-section-row h3,
+.living-signal-item-main h4 {
+  margin: 0;
+  color: #172033;
+}
+
+.living-signal-header p:last-child,
+.living-signal-empty,
+.living-signal-note,
+.living-signal-meta,
+.living-signal-recording-row p,
+.living-signal-info,
+.living-signal-detection-item span,
+.living-signal-sample-preview span {
+  margin: 0;
+  color: #5d697d;
+  line-height: 1.45;
+}
+
+.living-signal-back,
+.living-signal-add-link,
+.living-signal-close,
+.living-signal-item-actions button,
+.living-signal-record-buttons button,
+.living-signal-start,
+.living-signal-stop,
+.living-signal-save {
+  min-height: 40px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 14px;
+  font: inherit;
+  font-weight: 900;
+}
+
+.living-signal-back,
+.living-signal-close {
+  background: rgba(255, 255, 255, 0.78);
+  color: #526073;
+  border: 1px solid #d7e0ea;
+}
+
+.living-signal-add-link,
+.living-signal-start,
+.living-signal-save {
+  background: #e11d48;
+  color: #ffffff;
+  box-shadow: 0 10px 20px rgba(225, 29, 72, 0.16);
+}
+
+.living-signal-stop,
+.living-signal-item-actions .danger,
+.living-signal-record-buttons .danger {
+  background: #fff1f2;
+  color: #be123c;
+  border: 1px solid #fecdd3;
+}
+
+.living-signal-section-row {
+  align-items: center;
+}
+
+.living-signal-section-row span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.living-signal-list {
+  display: grid;
+  gap: 12px;
+}
+
+.living-signal-item {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #e6ebf2;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(255, 240, 245, 0.72), transparent 28%),
+    linear-gradient(180deg, #ffffff 0%, #fcfdff 100%);
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.05);
+}
+
+.living-signal-item-main {
+  align-items: stretch;
+}
+
+.living-signal-item-main > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.living-signal-item-main h4 {
+  font-size: 1rem;
+  line-height: 1.28;
+}
+
+.living-signal-note {
+  font-size: 0.86rem;
+}
+
+.living-signal-meta {
+  font-size: 0.78rem;
+}
+
+.living-signal-item-actions,
+.living-signal-record-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.living-signal-item-actions button,
+.living-signal-record-buttons button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #d7e0ea;
+  background: #ffffff;
+  color: #334155;
+  box-shadow: none;
+}
+
+.living-signal-recordings,
+.living-signal-detection-list {
+  display: grid;
+  gap: 8px;
+}
+
+.living-signal-recording-row,
+.living-signal-detection-item {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #edf2f7;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.living-signal-recording-row strong,
+.living-signal-detection-item strong,
+.living-signal-recorder-row strong {
+  color: #172033;
+}
+
+.living-signal-recording-row audio,
+.living-signal-sample-preview audio {
+  width: 100%;
+  min-width: 0;
+}
+
+.living-signal-field {
+  display: grid;
+  gap: 7px;
+  color: #334155;
+  font-weight: 800;
+}
+
+.living-signal-field input,
+.living-signal-field select,
+.living-signal-field textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 12px 13px;
+  font: inherit;
+  color: #111827;
+  background: #fbfdff;
+}
+
+.living-signal-threshold {
+  display: grid;
+  gap: 8px;
+  color: #334155;
+  font-weight: 800;
+}
+
+.living-signal-threshold input {
+  accent-color: #e11d48;
+}
+
+.living-signal-level-bar {
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5e7eb;
+}
+
+.living-signal-level-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #22c55e 0%, #f59e0b 60%, #ef4444 100%);
+}
+
+.living-signal-sample-preview {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #edf2f7;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.living-signal-warning,
+.living-signal-result {
+  margin: 0;
+  padding: 11px 12px;
+  border-radius: 12px;
+  font-weight: 800;
+}
+
+.living-signal-warning {
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.living-signal-result {
+  background: #ecfdf5;
+  color: #166534;
+}
+
+.living-signal-muted {
+  color: #94a3b8;
+  font-size: 0.82rem;
+}
+
+.living-signal-empty {
+  border: 1px dashed #d6dce5;
+  border-radius: 14px;
+  padding: 18px 14px;
+  background: #fafbfd;
+  text-align: center;
+}
+
+.living-signal-sample-mode {
+  display: grid;
+  gap: 8px;
+  color: #475569;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.living-signal-sample-mode-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.living-signal-sample-mode-buttons button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid #d7e0ea;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #475569;
+  font: inherit;
+  font-weight: 800;
+}
+
+.living-signal-sample-mode-buttons button.active {
+  border-color: #fda4af;
+  background: #fff1f4;
+  color: #be123c;
+}
+
+.living-signal-recording-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: #fff1f2;
+  color: #be123c;
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.living-signal-recording-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #ef4444;
+  animation: living-signal-pulse 1s infinite ease-in-out;
+}
+
+.living-signal-recording-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 14px;
+}
+
+.living-signal-recording-bars span {
+  width: 3px;
+  border-radius: 999px;
+  background: #ef4444;
+  animation: living-signal-wave 0.8s infinite ease-in-out;
+}
+
+.living-signal-recording-bars span:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.living-signal-recording-bars span:nth-child(2) {
+  animation-delay: 0.12s;
+}
+
+.living-signal-recording-bars span:nth-child(3) {
+  animation-delay: 0.24s;
+}
+
+@keyframes living-signal-pulse {
+  0%,
+  100% {
+    transform: scale(0.85);
+    opacity: 0.6;
+  }
+
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes living-signal-wave {
+  0%,
+  100% {
+    height: 5px;
+    opacity: 0.55;
+  }
+
+  50% {
+    height: 14px;
+    opacity: 1;
+  }
+}
+
+.living-signal-screen button:focus-visible,
+.living-signal-screen input:focus-visible,
+.living-signal-screen select:focus-visible,
+.living-signal-screen textarea:focus-visible {
+  outline: 3px solid #fb7185;
+  outline-offset: 2px;
+}
+
+@media (max-width: 359px) {
+  .living-signal-top-row,
+  .living-signal-item-main,
+  .living-signal-section-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .living-signal-item-actions,
+  .living-signal-record-buttons {
+    justify-content: flex-start;
+  }
+}
