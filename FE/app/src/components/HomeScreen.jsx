@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
+import { LivingSignalSettingsScreen } from '../features/living-signal'
+import { getAppPreview, getHomeSummary } from '../services/homeService'
 import { AlertsTab } from './AlertsTab'
 import { DevicesTab } from './DevicesTab'
 import { HomeTab } from './HomeTab'
-import { getAppPreview, getHomeSummary } from '../services/homeService'
 
 const statusLabels = {
   SAFE: '안전',
@@ -71,12 +72,14 @@ export function HomeScreen({ session, onLogout }) {
     if (activeTab === 'menu' && menuScreen === 'livingSignals') {
       return '생활 신호 설정'
     }
+
     return tabTitles[activeTab]
   }, [activeTab, menuScreen])
 
   function handleTabChange(nextTab) {
     setActiveTab(nextTab)
     setEmergencyMessage('')
+
     if (nextTab !== 'menu') {
       setMenuScreen('root')
     }
@@ -215,129 +218,14 @@ function MenuTab({
         <p className="card-label">생활 신호 설정</p>
         <h2>등록된 생활 알림음을 관리해요.</h2>
         <p>
-          현재 {livingSignals.summary.registeredSoundCount}개 신호, 샘플 {livingSignals.summary.enrolledClipCount}개가
-          등록되어 있어요.
+          현재 {livingSignals.summary.registeredSoundCount}개 신호, 샘플{' '}
+          {livingSignals.summary.enrolledClipCount}개가 등록되어 있어요.
         </p>
       </button>
 
       <button className="secondary-button full-button" type="button" onClick={onLogout}>
         로그인으로 돌아가기
       </button>
-    </section>
-  )
-}
-
-function LivingSignalSettingsScreen({ livingSignals, onBack }) {
-  const { summary, sounds, evaluation, workflow } = livingSignals
-
-  return (
-    <section className="tab-stack" aria-labelledby="living-signals-title">
-      <button className="text-button back-button" type="button" onClick={onBack}>
-        ← 메뉴로 돌아가기
-      </button>
-
-      <div className="content-card hero-card">
-        <p className="card-label">생활 신호 설정</p>
-        <h2 id="living-signals-title">사용자 맞춤 생활 알림음을 관리해요.</h2>
-        <p>등록한 소리를 다시 들었을 때 같은 생활 신호로 인식하도록 제품 화면 안에 연결한 상태입니다.</p>
-      </div>
-
-      <section className="signal-stat-grid" aria-label="생활 신호 요약">
-        <article className="mini-card">
-          <p className="card-label">등록 신호</p>
-          <strong>{summary.registeredSoundCount}</strong>
-          <span>사용자별 대표 생활 신호</span>
-        </article>
-        <article className="mini-card">
-          <p className="card-label">등록 샘플</p>
-          <strong>{summary.enrolledClipCount}</strong>
-          <span>녹음 파일 기준</span>
-        </article>
-        <article className="mini-card">
-          <p className="card-label">기준값</p>
-          <strong>{summary.threshold.toFixed(2)}</strong>
-          <span>유사도 threshold</span>
-        </article>
-        <article className="mini-card">
-          <p className="card-label">최근 정확도</p>
-          <strong>{Math.round(summary.accuracy * 100)}%</strong>
-          <span>{summary.lastEvaluatedAt.slice(11, 16)} 평가 기준</span>
-        </article>
-      </section>
-
-      <section className="content-card">
-        <div className="section-title-row">
-          <h2>등록된 생활 신호</h2>
-          <span>{summary.matchingMethod}</span>
-        </div>
-        <div className="signal-list">
-          {sounds.map((sound) => (
-            <article className="soft-card signal-item" key={sound.soundId}>
-              <div className="signal-item-head">
-                <div>
-                  <p className="card-label">{sound.soundTypeLabel}</p>
-                  <h3>{sound.registeredSoundName}</h3>
-                </div>
-                <strong>{Math.round(sound.averageSimilarity * 100)}%</strong>
-              </div>
-              <p>{sound.notes}</p>
-              <div className="settings-grid signal-metadata">
-                <span>유형 {sound.soundType}</span>
-                <span>샘플 {sound.clipCount}개</span>
-              </div>
-              <div className="sample-chip-row" aria-label="등록된 샘플">
-                {sound.sampleNames.map((sampleName) => (
-                  <span className="sample-chip" key={sampleName}>
-                    {sampleName}
-                  </span>
-                ))}
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="content-card">
-        <div className="section-title-row">
-          <h2>현재 연결된 모델 기준</h2>
-          <span>제품 반영 완료</span>
-        </div>
-        <div className="signal-detail-grid">
-          <span>모델 {summary.modelName}</span>
-          <span>정밀도 {Math.round(summary.precisionMacro * 100)}%</span>
-          <span>재현율 {Math.round(summary.recallMacro * 100)}%</span>
-          <span>F1 {Math.round(summary.f1Macro * 100)}%</span>
-        </div>
-      </section>
-
-      <section className="content-card">
-        <div className="section-title-row">
-          <h2>최근 평가 결과</h2>
-          <span>
-            {evaluation.correctQueries}/{evaluation.totalQueries} 성공
-          </span>
-        </div>
-        <p>
-          자기 자신을 제외한 등록음 비교 기준으로 정확도 {Math.round(summary.accuracy * 100)}%를 기록했습니다.
-        </p>
-        <div className="signal-detail-grid">
-          <span>최고 유사도 {evaluation.bestSimilarityMin.toFixed(4)}</span>
-          <span>최고 유사도 {evaluation.bestSimilarityMax.toFixed(4)}</span>
-          <span>리포트 {evaluation.reportFile}</span>
-        </div>
-      </section>
-
-      <section className="content-card">
-        <div className="section-title-row">
-          <h2>동작 방식</h2>
-          <span>현재 제품 흐름</span>
-        </div>
-        <ul className="signal-flow-list">
-          {workflow.map((step) => (
-            <li key={step}>{step}</li>
-          ))}
-        </ul>
-      </section>
     </section>
   )
 }

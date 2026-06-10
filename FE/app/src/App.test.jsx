@@ -224,9 +224,8 @@ describe('App login to home flow', () => {
 
     await user.click(screen.getByRole('button', { name: '확인 완료' }))
     expect(screen.getByRole('status').textContent).toContain('확인 완료 처리했습니다.')
-    expect(screen.getByRole('button', { name: '확인 완료됨' }).disabled).toBe(true)
+    expect(screen.queryByText('도어센서 장시간 열림')).toBeNull()
 
-    await user.click(screen.getByRole('button', { name: '목록으로 돌아가기' }))
     await user.click(screen.getByRole('button', { name: '생활' }))
     expect(screen.getByText('세탁 완료')).toBeTruthy()
 
