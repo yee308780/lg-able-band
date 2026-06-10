@@ -4,7 +4,7 @@ import { GuardianPlaceholder } from './components/GuardianPlaceholder'
 import { HomeScreen } from './components/HomeScreen'
 import { LoginScreen } from './components/LoginScreen'
 import { SignupScreen } from './components/SignupScreen'
-import { login, signup } from './services/authService'
+import { login, logout, signup } from './services/authService'
 
 function createInitialSignupForm() {
   return {
@@ -113,6 +113,7 @@ function App() {
   }
 
   function handleLogout() {
+    logout()
     setSession(null)
     setScreen('login')
     setLoginForm((current) => ({ ...current, password: '' }))

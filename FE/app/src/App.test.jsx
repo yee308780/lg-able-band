@@ -1,15 +1,20 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
-import { mockAccounts } from './mocks/authMock'
+import { mockHomeSummary } from './mocks/homeMock'
+
+const API_BASE_URL = 'http://localhost:8080'
+const REQUEST_DELAY_MS = 80
 
 describe('App login to home flow', () => {
   beforeEach(() => {
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('unexpected network call'))
+    window.localStorage.clear()
+    installMockBackend()
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
+    window.localStorage.clear()
   })
 
   it('renders login screen by default and does not request legacy users table', async () => {
@@ -53,7 +58,7 @@ describe('App login to home flow', () => {
     expect(screen.getByLabelText('비밀번호 확인').value).toBe('')
   })
 
-  it('shows USER signup constraints before submitting mock signup', async () => {
+  it('shows USER signup constraints before submitting API signup', async () => {
     const user = userEvent.setup()
     render(<App />)
 
@@ -74,7 +79,7 @@ describe('App login to home flow', () => {
     expect(errorText).toContain('비밀번호가 일치하지 않습니다.')
   })
 
-  it('submits USER signup mock and returns to login with the new email filled', async () => {
+  it('submits USER signup API and returns to login with the new email filled', async () => {
     const user = userEvent.setup()
     render(<App />)
 
@@ -89,9 +94,18 @@ describe('App login to home flow', () => {
     expect(await screen.findByRole('heading', { name: /able band 로그인/i })).toBeTruthy()
     expect(screen.getByDisplayValue('new-user@example.com')).toBeTruthy()
     expect(screen.getByRole('status').textContent).toContain('회원가입이 완료되었습니다. 로그인해주세요.')
+
+    const signupCall = globalThis.fetch.mock.calls.find(([url]) => url.endsWith('/api/auth/signup'))
+    expect(signupCall).toBeTruthy()
+    expect(JSON.parse(signupCall[1].body)).toMatchObject({
+      role: 'USER',
+      name: '김사용',
+      email: 'new-user@example.com',
+      accessibilityType: 'VISUAL',
+    })
   })
 
-  it('lets a newly signed up USER log in with the mock account', async () => {
+  it('lets a newly signed up USER log in with the API account', async () => {
     const user = userEvent.setup()
     render(<App />)
 
@@ -103,14 +117,12 @@ describe('App login to home flow', () => {
     await user.click(screen.getByRole('button', { name: '가입하기' }))
 
     expect(await screen.findByRole('heading', { name: /able band 로그인/i })).toBeTruthy()
-    const createdAccount = mockAccounts.find((account) => account.email === 'loginable-user@example.com')
-    expect(createdAccount.password).toBeUndefined()
-    expect(createdAccount.passwordHash).toBeTruthy()
 
     await user.type(screen.getByLabelText('비밀번호'), 'password1234')
     await user.click(screen.getByRole('button', { name: '로그인' }))
 
     expect(await screen.findByRole('heading', { name: /able band 홈/i })).toBeTruthy()
+    expect(window.localStorage.getItem('lg-able-band.accessToken')).toBe('api-user-token-3')
   })
 
   it('shows GUARDIAN signup fields and validates phone and relationship', async () => {
@@ -167,6 +179,10 @@ describe('App login to home flow', () => {
     expect(screen.getByText('연결된 기기 4/5개')).toBeTruthy()
     expect(screen.getByRole('button', { name: '기기 확인' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '긴급 지원 요청' })).toBeTruthy()
+
+    const homeCall = globalThis.fetch.mock.calls.find(([url]) => url.endsWith('/api/app/home'))
+    expect(homeCall).toBeTruthy()
+    expect(new Headers(homeCall[1].headers).get('Authorization')).toBe('Bearer api-user-token')
 
     await user.click(screen.getByRole('button', { name: '긴급 지원 요청' }))
 
@@ -258,3 +274,158 @@ describe('App login to home flow', () => {
     })
   })
 })
+
+function installMockBackend() {
+  const accounts = new Map([
+    [
+      'USER:user@example.com',
+      {
+        role: 'USER',
+        email: 'user@example.com',
+        password: 'password1234',
+        accountId: 1,
+        name: '소희',
+        userId: 1,
+        accessibilityType: 'VISUAL',
+        accessToken: 'api-user-token',
+      },
+    ],
+    [
+      'GUARDIAN:guardian@example.com',
+      {
+        role: 'GUARDIAN',
+        email: 'guardian@example.com',
+        password: 'password1234',
+        accountId: 2,
+        name: '보호자',
+        guardianId: 1,
+        linkedUserId: 1,
+        relationship: 'FAMILY',
+        accessToken: 'api-guardian-token',
+      },
+    ],
+  ])
+  let nextAccountId = 3
+
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init = {}) => {
+    await delay(REQUEST_DELAY_MS)
+
+    const url = typeof input === 'string' ? input : input.url
+    const method = (init.method || 'GET').toUpperCase()
+    const body = init.body ? JSON.parse(init.body) : {}
+
+    if (url === `${API_BASE_URL}/api/auth/signup` && method === 'POST') {
+      const accountKey = accountMapKey(body.role, body.email)
+      if (accounts.has(accountKey)) {
+        return jsonResponse(
+          { code: 'DUPLICATE_EMAIL', message: '이미 가입된 이메일입니다.', details: {} },
+          { status: 409 },
+        )
+      }
+
+      const accountId = nextAccountId
+      nextAccountId += 1
+      const account = {
+        ...body,
+        accountId,
+        userId: body.role === 'USER' ? accountId : null,
+        guardianId: body.role === 'GUARDIAN' ? accountId : null,
+        accessToken: `api-${body.role.toLowerCase()}-token-${accountId}`,
+      }
+
+      accounts.set(accountKey, account)
+
+      return jsonResponse(
+        {
+          accountId: account.accountId,
+          role: account.role,
+          userId: account.userId,
+          name: account.name,
+          email: account.email,
+          accessibilityType: account.accessibilityType,
+        },
+        { status: 201 },
+      )
+    }
+
+    if (url === `${API_BASE_URL}/api/auth/login` && method === 'POST') {
+      const account = accounts.get(accountMapKey(body.role, body.email))
+      if (!account || account.password !== body.password) {
+        return jsonResponse(
+          { code: 'INVALID_CREDENTIALS', message: '이메일 또는 비밀번호가 올바르지 않습니다.', details: {} },
+          { status: 401 },
+        )
+      }
+
+      return jsonResponse(createLoginResponse(account))
+    }
+
+    if (url === `${API_BASE_URL}/api/app/home` && method === 'GET') {
+      const authorization = new Headers(init.headers).get('Authorization')
+      const isKnownUserToken = authorization === 'Bearer api-user-token' || authorization?.startsWith('Bearer api-user-token-')
+
+      if (!isKnownUserToken) {
+        return jsonResponse(
+          { code: 'UNAUTHORIZED', message: 'Authorization 헤더가 필요합니다.', details: {} },
+          { status: 401 },
+        )
+      }
+
+      return jsonResponse(mockHomeSummary)
+    }
+
+    return jsonResponse(
+      { code: 'NOT_FOUND', message: `테스트 mock API에 없는 경로입니다: ${url}`, details: {} },
+      { status: 404 },
+    )
+  })
+}
+
+function createLoginResponse(account) {
+  const baseResponse = {
+    accessToken: account.accessToken,
+    role: account.role,
+    account: {
+      accountId: account.accountId,
+      name: account.name,
+      email: account.email,
+    },
+  }
+
+  if (account.role === 'GUARDIAN') {
+    return {
+      ...baseResponse,
+      guardianProfile: {
+        guardianId: account.guardianId,
+        linkedUserId: account.linkedUserId || null,
+        relationship: account.relationship,
+      },
+    }
+  }
+
+  return {
+    ...baseResponse,
+    userProfile: {
+      userId: account.userId,
+      name: account.name,
+      accessibilityType: account.accessibilityType,
+    },
+  }
+}
+
+function accountMapKey(role, email) {
+  return `${role}:${email}`
+}
+
+function jsonResponse(body, { status = 200 } = {}) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}

@@ -1,54 +1,35 @@
-import {
-  createMockLoginResponse,
-  createMockPasswordHash,
-  createMockSignupResponse,
-  mockAccounts,
-} from '../mocks/authMock'
-
-const LOGIN_DELAY_MS = 40
-const SIGNUP_DELAY_MS = 40
+import { apiRequest, clearAccessToken, saveAccessToken } from './apiClient'
 
 export async function login({ role, email, password }) {
-  await delay(LOGIN_DELAY_MS)
+  const session = await apiRequest('/api/auth/login', {
+    method: 'POST',
+    requireAuth: false,
+    body: {
+      role,
+      email: email.trim(),
+      password,
+    },
+  })
 
-  const account = mockAccounts.find(
-    (candidate) =>
-      candidate.role === role &&
-      candidate.email === email.trim() &&
-      candidate.passwordHash === createMockPasswordHash(password),
-  )
-
-  if (!account) {
-    throw new Error('이메일 또는 비밀번호가 올바르지 않습니다.')
+  if (session.accessToken) {
+    saveAccessToken(session.accessToken)
   }
 
-  return structuredClone(account.response)
+  return session
 }
 
 export async function signup(form) {
-  await delay(SIGNUP_DELAY_MS)
-
   const payload = buildSignupPayload(form)
 
-  if (mockAccounts.some((account) => account.email === payload.email)) {
-    throw new Error('이미 가입된 이메일입니다.')
-  }
-
-  const signupResponse = createMockSignupResponse(payload)
-  mockAccounts.push({
-    role: payload.role,
-    email: payload.email,
-    passwordHash: createMockPasswordHash(payload.password),
-    response: createMockLoginResponse(signupResponse),
+  return apiRequest('/api/auth/signup', {
+    method: 'POST',
+    requireAuth: false,
+    body: payload,
   })
-
-  return structuredClone(signupResponse)
 }
 
-function delay(ms) {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms)
-  })
+export function logout() {
+  clearAccessToken()
 }
 
 function buildSignupPayload(form) {
