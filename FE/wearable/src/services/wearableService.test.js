@@ -26,19 +26,19 @@ describe('wearableService', () => {
   it('selects the highest priority current alert', async () => {
     const alert = await getCurrentAlert()
 
-    expect(alert.alertId).toBe(301)
-    expect(alert.severity).toBe('CRITICAL')
-    expect(alert.type).toBe('EMERGENCY')
+    expect(alert.alertId).toBe(201)
+    expect(alert.severity).toBe('HIGH')
+    expect(alert.type).toBe('DANGER')
   })
 
   it('confirms and replays an alert without mutating the fixture', async () => {
-    const confirmed = await confirmAlert(301)
-    const replayed = await replayAlert(301)
+    const confirmed = await confirmAlert(201)
+    const replayed = await replayAlert(201)
     const current = await getCurrentAlert()
 
     expect(confirmed.status).toBe('CONFIRMED')
     expect(replayed.status).toBe('REPLAYED')
-    expect(replayed.voiceGuide).toContain('가스 위험')
+    expect(replayed.voiceGuide).toContain('전기레인지 과열 주의')
     expect(current.status).toBe('UNREAD')
   })
 
@@ -92,7 +92,7 @@ describe('wearableService', () => {
     const alert = await service.getCurrentAlert()
 
     expect(apiFetch).toHaveBeenCalledWith(
-      'http://api.test/api/alerts?status=UNREAD&limit=20',
+      'http://api.test/api/alerts?limit=20',
       expect.objectContaining({ method: 'GET' }),
     )
     expect(alert.alertId).toBe(777)
@@ -110,7 +110,7 @@ describe('wearableService', () => {
 
     const alert = await service.getCurrentAlert()
 
-    expect(alert.alertId).toBe(301)
+    expect(alert.alertId).toBe(201)
   })
 
   it('sends final api confirm request body', async () => {

@@ -204,12 +204,15 @@ function App() {
           <ModeSwitch
             activeMode={mode === 'deviceSelect' ? 'uwb' : mode}
             onModeChange={(nextMode) => {
-              setMode(nextMode)
               setStatusMessage('')
               if (nextMode === 'uwb') {
-                isUwbPollingRef.current = true
-                setIsUwbPolling(true)
+                setMode('deviceSelect')
+                isUwbPollingRef.current = false
+                setIsUwbPolling(false)
+                return
               }
+
+              setMode(nextMode)
             }}
           />
         ) : null}

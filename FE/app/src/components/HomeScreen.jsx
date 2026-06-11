@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import jsQR from 'jsqr'
 import { LivingSignalSettingsScreen } from '../features/living-signal'
 import { getAppPreview, getHomeSummary } from '../services/homeService'
 import { createEmergencyRequest } from '../services/emergencyService'
@@ -120,6 +121,10 @@ export function HomeScreen({ session, onLogout }) {
       return '보호자 연결'
     }
 
+    if (activeTab === 'menu' && menuScreen === 'wearablePairing') {
+      return '웨어러블 연동'
+    }
+
     return tabTitles[activeTab]
   }, [activeTab, menuScreen])
 
@@ -238,6 +243,7 @@ export function HomeScreen({ session, onLogout }) {
             livingSignals={preview.livingSignals}
             onOpenGuardianConnection={() => setMenuScreen('guardianConnection')}
             onOpenLivingSignals={() => setMenuScreen('livingSignals')}
+            onOpenWearablePairing={() => setMenuScreen('wearablePairing')}
             onLogout={onLogout}
             userName={session.account.name}
           />
@@ -256,6 +262,9 @@ export function HomeScreen({ session, onLogout }) {
             onLinkGuardian={handleLinkGuardian}
             onRemoveGuardian={handleDeleteGuardian}
           />
+        ) : null}
+        {activeTab === 'menu' && menuScreen === 'wearablePairing' ? (
+          <WearablePairingScannerScreen onBack={() => setMenuScreen('root')} />
         ) : null}
       </div>
 
@@ -284,6 +293,7 @@ function MenuTab({
   livingSignals,
   onOpenGuardianConnection,
   onOpenLivingSignals,
+  onOpenWearablePairing,
   onLogout,
   userName,
 }) {
@@ -381,6 +391,17 @@ function MenuTab({
         ) : null}
       </section>
 
+      <button className="soft-card wearable-pairing-card" type="button" onClick={onOpenWearablePairing}>
+        <span className="wearable-pairing-icon" aria-hidden="true">
+          QR
+        </span>
+        <span>
+          <p className="card-label">웨어러블 연동</p>
+          <h2>밴드 QR을 카메라로 스캔해요.</h2>
+          <p>웨어러블 화면의 QR 코드를 비추면 바로 연결을 시작합니다.</p>
+        </span>
+      </button>
+
       <button className="soft-card settings-link-card" type="button" onClick={onOpenLivingSignals}>
         <p className="card-label">생활 신호 설정</p>
         <h2>등록된 생활 알림음을 관리해요.</h2>
@@ -395,6 +416,220 @@ function MenuTab({
       </button>
     </section>
   )
+}
+
+function WearablePairingScannerScreen({ onBack }) {
+  const [scannerMessage, setScannerMessage] = useState('웨어러블 화면의 QR 코드를 프레임 안에 맞춰주세요.')
+  const [scanStatus, setScanStatus] = useState('ready')
+  const [detectedValue, setDetectedValue] = useState('')
+  const videoRef = useRef(null)
+  const canvasRef = useRef(null)
+  const streamRef = useRef(null)
+  const scanFrameRef = useRef(null)
+  const activeScanRef = useRef(false)
+
+  function stopScanResources() {
+    activeScanRef.current = false
+
+    if (scanFrameRef.current) {
+      window.cancelAnimationFrame(scanFrameRef.current)
+      scanFrameRef.current = null
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+  }
+
+  useEffect(
+    () => () => {
+      stopScanResources()
+    },
+    [],
+  )
+
+  async function handleStartScan() {
+    setScanStatus('scanning')
+    setDetectedValue('')
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setScannerMessage('이 환경에서는 카메라를 사용할 수 없어 스캔 화면만 표시합니다.')
+      setScanStatus('blocked')
+      return
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      streamRef.current = stream
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        await videoRef.current.play()
+      }
+
+      const detector = window.BarcodeDetector ? new window.BarcodeDetector({ formats: ['qr_code'] }) : null
+      activeScanRef.current = true
+      setScannerMessage('카메라가 켜졌습니다. QR 코드를 프레임 안에 맞춰주세요.')
+      scanQrFrame(detector)
+    } catch {
+      setScannerMessage('카메라 권한이 필요합니다. 브라우저 권한을 허용한 뒤 다시 시도해주세요.')
+      setScanStatus('blocked')
+    }
+  }
+
+  async function scanQrFrame(detector) {
+    if (!activeScanRef.current || !videoRef.current || !canvasRef.current) {
+      return
+    }
+
+    const video = videoRef.current
+    const canvas = canvasRef.current
+
+    if (video.readyState >= 2 && video.videoWidth && video.videoHeight) {
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      const context = canvas.getContext('2d', { willReadFrequently: true })
+      if (!context) {
+        setScannerMessage('카메라 화면을 읽을 수 없습니다. 다시 시도해주세요.')
+        setScanStatus('blocked')
+        stopScanResources()
+        return
+      }
+      context.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+      try {
+        const codes = detector ? await detector.detect(canvas) : []
+        const imageData = detector ? null : context.getImageData(0, 0, canvas.width, canvas.height)
+        const fallbackCode = imageData ? jsQR(imageData.data, imageData.width, imageData.height) : null
+        const rawValue = codes[0]?.rawValue || fallbackCode?.data
+
+        if (rawValue) {
+          if (handleQrDetected(rawValue)) {
+            return
+          }
+        }
+      } catch {
+        setScannerMessage('QR을 읽는 중 문제가 생겼습니다. 카메라를 다시 켜주세요.')
+        setScanStatus('blocked')
+        stopScanResources()
+        return
+      }
+    }
+
+    scanFrameRef.current = window.requestAnimationFrame(() => scanQrFrame(detector))
+  }
+
+  function handleQrDetected(rawValue) {
+    const pairing = parseWearablePairingPayload(rawValue)
+
+    if (!pairing) {
+      setScannerMessage('Able Band 연동 QR이 아닙니다. 웨어러블 첫 화면의 QR을 다시 비춰주세요.')
+      return false
+    }
+
+    stopScanResources()
+    setScanStatus('paired')
+    setDetectedValue(rawValue)
+    setScannerMessage(`${pairing.deviceName} ${pairing.pairingCode}를 인식했습니다. 웨어러블 연동이 완료되었습니다.`)
+    return true
+  }
+
+  function handleStopScan() {
+    stopScanResources()
+    setScanStatus('ready')
+    setScannerMessage('스캔을 중지했습니다. 다시 시작하려면 카메라를 켜주세요.')
+  }
+
+  return (
+    <section className="tab-stack wearable-scanner-screen" aria-labelledby="wearable-scanner-title">
+      <button className="text-link-button" type="button" onClick={onBack}>
+        메뉴로 돌아가기
+      </button>
+
+      <section className="content-card wearable-scanner-card">
+        <p className="card-label">웨어러블 연동</p>
+        <h2 id="wearable-scanner-title">밴드 QR을 스캔해주세요.</h2>
+        <p>웨어러블의 “휴대폰으로 연동” 화면에 표시된 QR 코드를 카메라로 비춰주세요.</p>
+
+        <div className={`qr-scanner-preview scanner-${scanStatus}`} aria-label="QR 카메라 스캔 영역">
+          <video ref={videoRef} className="scanner-video" muted playsInline aria-hidden="true" />
+          <canvas ref={canvasRef} className="scanner-canvas" aria-hidden="true" />
+          <div className="scanner-top-bar">
+            <span>QR 스캔</span>
+            <span>{scanStatus === 'paired' ? '연동 완료' : '대기 중'}</span>
+          </div>
+          <div className="scanner-frame" aria-hidden="true">
+            <span className="scanner-corner corner-tl" />
+            <span className="scanner-corner corner-tr" />
+            <span className="scanner-corner corner-bl" />
+            <span className="scanner-corner corner-br" />
+          </div>
+          <div className="scanner-bottom-bar">
+            <span />
+            <strong>QR을 프레임에 맞춰주세요</strong>
+            <span />
+          </div>
+        </div>
+
+        <p className="member-status-message" role="status">
+          {scannerMessage}
+        </p>
+        {detectedValue ? <p className="scanner-result">연동 정보: {formatPairingResult(detectedValue)}</p> : null}
+
+        <div className="scanner-action-row">
+          <button className="secondary-button compact-button" type="button" onClick={handleStartScan}>
+            카메라 켜기
+          </button>
+          <button className="primary-button compact-button" type="button" onClick={handleStopScan}>
+            카메라 끄기
+          </button>
+        </div>
+      </section>
+    </section>
+  )
+}
+
+function parseWearablePairingPayload(rawValue) {
+  try {
+    const url = new URL(rawValue)
+    const params = url.searchParams
+
+    if (url.protocol !== 'lg-able-band:' || url.hostname !== 'pair' || params.get('source') !== 'wearable') {
+      return null
+    }
+
+    const pairingSessionId = params.get('pairingSessionId')
+    const deviceId = params.get('deviceId')
+    const pairingCode = params.get('pairingCode')
+
+    if (!pairingSessionId || !deviceId || !pairingCode) {
+      return null
+    }
+
+    return {
+      pairingSessionId,
+      deviceId,
+      pairingCode,
+      deviceName: deviceId.includes('able-band') ? 'LG Able Band' : '웨어러블',
+    }
+  } catch {
+    return null
+  }
+}
+
+function formatPairingResult(rawValue) {
+  const pairing = parseWearablePairingPayload(rawValue)
+
+  if (!pairing) {
+    return rawValue
+  }
+
+  return `${pairing.deviceName} · ${pairing.deviceId} · ${pairing.pairingCode}`
 }
 
 function GuardianConnectionScreen({

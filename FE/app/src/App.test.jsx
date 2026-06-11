@@ -311,6 +311,20 @@ describe('App login to home flow', () => {
     await user.click(screen.getByRole('button', { name: '메뉴로 돌아가기' }))
     expect(screen.getByRole('button', { name: '멤버 초대' })).toBeTruthy()
     expect(screen.getAllByText('가족').length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: /밴드 QR을 카메라로 스캔해요/i })).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: /밴드 QR을 카메라로 스캔해요/i }))
+    expect(screen.getByRole('heading', { name: '밴드 QR을 스캔해주세요.' })).toBeTruthy()
+    expect(screen.getByLabelText('QR 카메라 스캔 영역')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '카메라 켜기' })).toBeTruthy()
+    installQrScannerMock(
+      'lg-able-band://pair?pairingSessionId=pairing-able-260610-1440&deviceId=able-band-demo-001&pairingCode=ABLE-4IN-260610&nonce=demo-nonce-4inch-001&issuedAt=2026-06-10T14%3A40%3A00%2B09%3A00&expiresAt=2026-06-10T14%3A45%3A00%2B09%3A00&source=wearable',
+    )
+    await user.click(screen.getByRole('button', { name: '카메라 켜기' }))
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toContain('웨어러블 연동이 완료되었습니다.')
+    })
+    expect(screen.getByText('연동 정보: LG Able Band · able-band-demo-001 · ABLE-4IN-260610')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: '메뉴로 돌아가기' }))
     expect(screen.getByRole('button', { name: /생활 신호 설정/i })).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: /생활 신호 설정/i }))
@@ -681,6 +695,40 @@ function installSpeechSynthesisMock() {
       getVoices: vi.fn(() => [{ lang: 'ko-KR', name: 'Korean' }]),
       resume: vi.fn(),
       speak: vi.fn(),
+    },
+  })
+}
+
+function installQrScannerMock(rawValue) {
+  Object.defineProperty(navigator, 'mediaDevices', {
+    configurable: true,
+    value: {
+      getUserMedia: vi.fn().mockResolvedValue({
+        getTracks: () => [{ stop: vi.fn() }],
+      }),
+    },
+  })
+
+  vi.spyOn(window.HTMLMediaElement.prototype, 'play').mockResolvedValue()
+  Object.defineProperty(window.HTMLMediaElement.prototype, 'readyState', {
+    configurable: true,
+    get: () => 2,
+  })
+  Object.defineProperty(window.HTMLVideoElement.prototype, 'videoWidth', {
+    configurable: true,
+    get: () => 640,
+  })
+  Object.defineProperty(window.HTMLVideoElement.prototype, 'videoHeight', {
+    configurable: true,
+    get: () => 480,
+  })
+  vi.spyOn(window.HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() })
+  Object.defineProperty(window, 'BarcodeDetector', {
+    configurable: true,
+    value: class MockBarcodeDetector {
+      async detect() {
+        return [{ rawValue }]
+      }
     },
   })
 }
