@@ -1,5 +1,6 @@
 package com.lgableband.emergency;
 
+import com.lgableband.emergency.EmergencyService.CreateEmergencyCommand;
 import com.lgableband.mock.MockDataStore;
 import com.lgableband.mock.MockDataStore.EmergencyRequest;
 import jakarta.validation.Valid;
@@ -22,9 +23,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class EmergencyController {
 
 	private final MockDataStore store;
+	private final EmergencyService service;
 
-	public EmergencyController(MockDataStore store) {
+	public EmergencyController(MockDataStore store, EmergencyService service) {
 		this.store = store;
+		this.service = service;
 	}
 
 	@PostMapping
@@ -34,7 +37,7 @@ public class EmergencyController {
 	) {
 		long userId = this.store.requireUser(authorization).userId();
 		return ResponseEntity.status(HttpStatus.CREATED)
-			.body(this.store.createEmergency(userId, request.message(), request.source()));
+			.body(this.service.create(userId, request.toCommand()));
 	}
 
 	@GetMapping
@@ -64,8 +67,17 @@ public class EmergencyController {
 
 	public record EmergencyRequestBody(
 		@NotBlank String message,
-		@NotBlank String source
+		@NotBlank @Pattern(regexp = "APP|WEARABLE") String source,
+		String triggerType,
+		Integer pressCount,
+		String riskLevel,
+		Integer riskScore,
+		String location,
+		String userResponse
 	) {
+		CreateEmergencyCommand toCommand() {
+			return new CreateEmergencyCommand(message, source, triggerType, pressCount, riskLevel, riskScore, location, userResponse);
+		}
 	}
 
 	public record EmergencyRequestListResponse(List<EmergencyRequest> items) {
