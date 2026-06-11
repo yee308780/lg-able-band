@@ -23,6 +23,96 @@ describe('wearableService', () => {
     expect(session.expiresInMinutes).toBe(5)
   })
 
+  it('creates pairing sessions through the wearable final api', async () => {
+    const apiFetch = vi.fn(async () =>
+      jsonResponse({
+        pairingSessionId: 'pairing-api-001',
+        deviceId: 'able-band-api-001',
+        pairingCode: 'ABLE-API-001',
+        nonce: 'nonce-api-001',
+        issuedAt: '2026-06-10T15:00:00+09:00',
+        expiresAt: '2026-06-10T15:05:00+09:00',
+        expiresInMinutes: 5,
+        pairingPayload: 'lg-able-band://pair?pairingSessionId=pairing-api-001&from=backend',
+        status: 'WAITING',
+      }),
+    )
+    const service = createWearableService({
+      baseUrl: 'http://api.test',
+      fetchImpl: apiFetch,
+      fallbackEnabled: false,
+    })
+
+    const session = await service.createPairingSession()
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      'http://api.test/api/wearable/pairing-sessions',
+      expect.objectContaining({
+        body: JSON.stringify({
+          deviceId: 'able-band-demo-001',
+          deviceName: 'LG Able Band',
+          pairingCode: 'ABLE-4IN-260610',
+        }),
+        method: 'POST',
+      }),
+    )
+    expect(session).toMatchObject({
+      pairingSessionId: 'pairing-api-001',
+      deviceId: 'able-band-api-001',
+      pairingPayload: 'lg-able-band://pair?pairingSessionId=pairing-api-001&from=backend',
+      status: 'waiting',
+    })
+  })
+
+  it('polls pairing session status with device id and nonce', async () => {
+    const apiFetch = vi.fn(async () =>
+      jsonResponse({
+        pairingSessionId: 'pairing-api-001',
+        deviceId: 'able-band-api-001',
+        nonce: 'nonce-api-001',
+        status: 'PAIRED',
+        accessToken: 'paired-api-token',
+      }),
+    )
+    const service = createWearableService({
+      baseUrl: 'http://api.test',
+      fetchImpl: apiFetch,
+      fallbackEnabled: false,
+    })
+
+    const status = await service.getPairingSessionStatus({
+      pairingSessionId: 'pairing-api-001',
+      deviceId: 'able-band-api-001',
+      nonce: 'nonce-api-001',
+    })
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      'http://api.test/api/wearable/pairing-sessions/pairing-api-001?deviceId=able-band-api-001&nonce=nonce-api-001',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(status).toMatchObject({
+      pairingSessionId: 'pairing-api-001',
+      status: 'success',
+      accessToken: 'paired-api-token',
+    })
+  })
+
+  it('falls back to a mock pairing session when the api is unavailable', async () => {
+    const service = createWearableService({
+      baseUrl: 'http://api.test',
+      fetchImpl: vi.fn(async () => {
+        throw new Error('network down')
+      }),
+      fallbackEnabled: true,
+    })
+
+    const session = await service.createPairingSession()
+
+    expect(session.pairingSessionId).toBe('pairing-able-260610-1440')
+    expect(session.pairingPayload).toContain('lg-able-band://pair')
+    expect(session.status).toBe('waiting')
+  })
+
   it('selects the highest priority current alert', async () => {
     const alert = await getCurrentAlert()
 
@@ -167,3 +257,12 @@ describe('wearableService', () => {
     expect(response.message).toContain('긴급 요청')
   })
 })
+
+function jsonResponse(body, status = 200) {
+  return {
+    ok: status < 400,
+    status,
+    headers: new Headers({ 'Content-Type': 'application/json' }),
+    json: async () => body,
+  }
+}

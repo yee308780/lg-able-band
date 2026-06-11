@@ -92,6 +92,11 @@ export function GuardianPlaceholder({ account, onLogout }) {
     return (
       <main className="phone-screen guardian-screen guardian-loading-screen">
         <div className="home-loading-group" role="status">
+          <img
+            className="home-loading-logo"
+            src="/LG_Able_Band_wordmark_transparent.png"
+            alt="LG Able Band"
+          />
           <p>보호자 화면을 불러오는 중입니다.</p>
         </div>
       </main>

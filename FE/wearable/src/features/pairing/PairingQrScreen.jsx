@@ -4,12 +4,9 @@ export function PairingQrScreen({
   pairing,
   onPairComplete,
   onResetPairing,
+  showManualComplete = false,
   status = 'waiting',
 }) {
-  if (!pairing) {
-    return <p className="screen-message">연동 QR을 준비하는 중입니다.</p>
-  }
-
   if (status === 'success') {
     return (
       <section className="pairing-state-screen" aria-labelledby="pairing-success-title">
@@ -55,6 +52,10 @@ export function PairingQrScreen({
     )
   }
 
+  if (!pairing) {
+    return <p className="screen-message">연동 QR을 준비하는 중입니다.</p>
+  }
+
   return (
     <section className="pairing-screen" aria-labelledby="pairing-title">
       <div className="pairing-copy">
@@ -75,9 +76,11 @@ export function PairingQrScreen({
         </div>
       </div>
 
-      <button className="primary-action" type="button" onClick={onPairComplete}>
-        휴대폰 연동 완료
-      </button>
+      {showManualComplete ? (
+        <button className="primary-action" type="button" onClick={onPairComplete}>
+          휴대폰 연동 완료
+        </button>
+      ) : null}
     </section>
   )
 }

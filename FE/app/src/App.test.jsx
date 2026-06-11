@@ -10,12 +10,16 @@ const REQUEST_DELAY_MS = 80
 describe('App login to home flow', () => {
   beforeEach(() => {
     window.localStorage.clear()
+    window.__ABLE_BAND_QR_DECODER__ = undefined
+    window.__ABLE_BAND_CAMERA_FRAME_TIMEOUT_MS__ = undefined
     installSpeechSynthesisMock()
     installMockBackend()
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
+    delete window.__ABLE_BAND_QR_DECODER__
+    delete window.__ABLE_BAND_CAMERA_FRAME_TIMEOUT_MS__
     window.localStorage.clear()
   })
 
@@ -144,6 +148,65 @@ describe('App login to home flow', () => {
     expect(screen.getByRole('button', { name: '긴급 지원 요청' })).toBeTruthy()
   })
 
+  it('sends USER emergency requests and refreshes emergency alert data', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('radio', { name: '사용자' }))
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com')
+    await user.type(screen.getByLabelText('비밀번호'), 'password1234')
+    await user.click(screen.getByRole('button', { name: '로그인' }))
+
+    await screen.findByRole('heading', { name: /소희 홈/i })
+    await user.click(screen.getByRole('button', { name: '긴급 지원 요청' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toContain('보호자에게 긴급 요청을 보냈습니다.')
+    })
+    await waitFor(() => {
+      expect(screen.getByText('긴급 지원 요청 접수')).toBeTruthy()
+    })
+
+    const emergencyCall = globalThis.fetch.mock.calls.find(([url, init]) => {
+      return url === `${API_BASE_URL}/api/emergency-requests` && init.method === 'POST'
+    })
+    expect(emergencyCall).toBeTruthy()
+    expect(JSON.parse(emergencyCall[1].body).source).toBe('APP')
+  })
+
+  it('lets a newly signed up USER request emergency with the new account token', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '회원가입' }))
+    await user.type(screen.getByLabelText('이름'), '긴급사용자')
+    await user.type(screen.getByLabelText('이메일'), 'new-user@example.com')
+    await user.type(screen.getByLabelText('비밀번호'), 'password1234')
+    await user.type(screen.getByLabelText('비밀번호 확인'), 'password1234')
+    await user.click(screen.getByRole('button', { name: '가입하기' }))
+
+    expect(await screen.findByRole('heading', { name: /able band 로그인/i })).toBeTruthy()
+    await user.type(screen.getByLabelText('비밀번호'), 'password1234')
+    await user.click(screen.getByRole('button', { name: '로그인' }))
+
+    await screen.findByRole('heading', { name: /소희 홈/i })
+    await user.click(screen.getByRole('button', { name: '긴급 지원 요청' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toContain('보호자에게 긴급 요청을 보냈습니다.')
+    })
+
+    const emergencyCall = globalThis.fetch.mock.calls.find(([url, init]) => {
+      const authorization = new Headers(init.headers).get('Authorization')
+      return (
+        url === `${API_BASE_URL}/api/emergency-requests` &&
+        init.method === 'POST' &&
+        authorization?.startsWith('Bearer api-user-token-')
+      )
+    })
+    expect(emergencyCall).toBeTruthy()
+  })
+
   it('lets a USER preview alerts, devices, guardian connection, wearable pairing, and living signals', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -182,7 +245,7 @@ describe('App login to home flow', () => {
     expect(screen.getByRole('button', { name: /밴드 QR을 카메라로 스캔해요\./ })).toBeTruthy()
 
     installQrScannerMock(
-      'lg-able-band://pair?pairingSessionId=pairing-able-260610-1440&deviceId=able-band-demo-001&pairingCode=ABLE-4IN-260610&source=wearable',
+      'lg-able-band://pair?pairingSessionId=pairing-able-260610-1440&deviceId=able-band-demo-001&pairingCode=ABLE-4IN-260610&nonce=nonce-able-001&source=wearable',
     )
     await user.click(screen.getByRole('button', { name: /밴드 QR을 카메라로 스캔해요\./ }))
     expect(screen.getByRole('heading', { name: '밴드 QR을 스캔해주세요.' })).toBeTruthy()
@@ -191,6 +254,7 @@ describe('App login to home flow', () => {
       expect(screen.getByRole('status').textContent).toContain('웨어러블 연동이 완료되었습니다.')
     })
     expect(screen.getByText('연동 정보: LG Able Band · able-band-demo-001 · ABLE-4IN-260610')).toBeTruthy()
+    expect(findFetchCall('/api/wearable/pairing-sessions/pairing-able-260610-1440/complete', 'POST')).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: '메뉴로 돌아가기' }))
     await user.click(screen.getByRole('button', { name: /생활 신호 설정/i }))
@@ -243,6 +307,191 @@ describe('App login to home flow', () => {
 
     expect(await screen.findByRole('heading', { name: '보호자 홈' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '사용자에게 연락' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '긴급 지원 요청' })).toBeNull()
+  })
+
+  it('shows the LG Able Band logo while the guardian dashboard is loading', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('radio', { name: '보호자' }))
+    await user.type(screen.getByLabelText('이메일'), 'guardian@example.com')
+    await user.type(screen.getByLabelText('비밀번호'), 'password1234')
+    await user.click(screen.getByRole('button', { name: '로그인' }))
+
+    expect(await screen.findByAltText('LG Able Band')).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: '보호자 홈' })).toBeTruthy()
+  })
+
+  it('falls back to jsQR when BarcodeDetector is unavailable for wearable pairing', async () => {
+    const user = userEvent.setup()
+    const rawValue =
+      'lg-able-band://pair?pairingSessionId=pairing-jsqr-260611&deviceId=able-band-demo-001&pairingCode=ABLE-4IN-260610&nonce=nonce-jsqr-001&source=wearable'
+    window.__ABLE_BAND_QR_DECODER__ = vi.fn(() => rawValue)
+    render(<App />)
+
+    await user.click(screen.getByRole('radio', { name: '사용자' }))
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com')
+    await user.type(screen.getByLabelText('비밀번호'), 'password1234')
+    await user.click(screen.getByRole('button', { name: '로그인' }))
+
+    await screen.findByRole('heading', { name: /소희 홈/i })
+    await user.click(screen.getByRole('button', { name: '메뉴' }))
+    installQrScannerMock(rawValue, { detector: false })
+    await user.click(screen.getByRole('button', { name: /밴드 QR을 카메라로 스캔해요\./ }))
+    await user.click(screen.getByRole('button', { name: '카메라 켜기' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toContain('웨어러블 연동이 완료되었습니다.')
+    })
+    expect(window.__ABLE_BAND_QR_DECODER__).toHaveBeenCalled()
+    expect(findFetchCall('/api/wearable/pairing-sessions/pairing-jsqr-260611/complete', 'POST')).toBeTruthy()
+  })
+
+  it('retries an alternate camera when the first camera stream has no visible frames', async () => {
+    const user = userEvent.setup()
+    const rawValue =
+      'lg-able-band://pair?pairingSessionId=pairing-camera-retry-260611&deviceId=able-band-demo-001&pairingCode=ABLE-4IN-260610&nonce=nonce-camera-retry&source=wearable'
+    const getUserMedia = vi.fn()
+    let cameraAttempt = 0
+    window.__ABLE_BAND_CAMERA_FRAME_TIMEOUT_MS__ = 10
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: getUserMedia.mockImplementation(async () => {
+          cameraAttempt += 1
+          return {
+            getTracks: () => [{ stop: vi.fn() }],
+          }
+        }),
+      },
+    })
+    vi.spyOn(window.HTMLMediaElement.prototype, 'play').mockResolvedValue()
+    Object.defineProperty(window.HTMLMediaElement.prototype, 'readyState', {
+      configurable: true,
+      get: () => 2,
+    })
+    Object.defineProperty(window.HTMLVideoElement.prototype, 'videoWidth', {
+      configurable: true,
+      get: () => (cameraAttempt >= 2 ? 640 : 0),
+    })
+    Object.defineProperty(window.HTMLVideoElement.prototype, 'videoHeight', {
+      configurable: true,
+      get: () => (cameraAttempt >= 2 ? 480 : 0),
+    })
+    vi.spyOn(window.HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage: vi.fn(),
+      getImageData: vi.fn(() => ({
+        data: new Uint8ClampedArray(640 * 480 * 4),
+        width: 640,
+        height: 480,
+      })),
+    })
+    Object.defineProperty(window, 'BarcodeDetector', {
+      configurable: true,
+      value: class MockBarcodeDetector {
+        async detect() {
+          return [{ rawValue }]
+        }
+      },
+    })
+
+    render(<App />)
+
+    await user.click(screen.getByRole('radio', { name: '사용자' }))
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com')
+    await user.type(screen.getByLabelText('비밀번호'), 'password1234')
+    await user.click(screen.getByRole('button', { name: '로그인' }))
+
+    await screen.findByRole('heading', { name: /소희 홈/i })
+    await user.click(screen.getByRole('button', { name: '메뉴' }))
+    await user.click(screen.getByRole('button', { name: /밴드 QR을 카메라로 스캔해요\./ }))
+    await user.click(screen.getByRole('button', { name: '카메라 켜기' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toContain('웨어러블 연동이 완료되었습니다.')
+    })
+    expect(getUserMedia).toHaveBeenNthCalledWith(1, { video: true })
+    expect(getUserMedia).toHaveBeenNthCalledWith(2, { video: { facingMode: { ideal: 'environment' } } })
+  })
+
+  it('prefers a physical webcam over virtual camera devices', async () => {
+    const user = userEvent.setup()
+    const getUserMedia = vi.fn().mockResolvedValue({
+      getTracks: () => [{ stop: vi.fn() }],
+    })
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        enumerateDevices: vi.fn().mockResolvedValue([
+          {
+            kind: 'videoinput',
+            label: 'Mirametrix Virtual Camera',
+            deviceId: 'virtual-camera',
+          },
+          {
+            kind: 'videoinput',
+            label: 'USB webcam (0408:2098)',
+            deviceId: 'usb-webcam',
+          },
+        ]),
+        getUserMedia,
+      },
+    })
+    vi.spyOn(window.HTMLMediaElement.prototype, 'play').mockResolvedValue()
+    Object.defineProperty(window.HTMLMediaElement.prototype, 'readyState', {
+      configurable: true,
+      get: () => 2,
+    })
+    Object.defineProperty(window.HTMLVideoElement.prototype, 'videoWidth', {
+      configurable: true,
+      get: () => 640,
+    })
+    Object.defineProperty(window.HTMLVideoElement.prototype, 'videoHeight', {
+      configurable: true,
+      get: () => 480,
+    })
+    vi.spyOn(window.HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage: vi.fn(),
+      getImageData: vi.fn(() => ({
+        data: new Uint8ClampedArray(640 * 480 * 4),
+        width: 640,
+        height: 480,
+      })),
+    })
+    Object.defineProperty(window, 'BarcodeDetector', {
+      configurable: true,
+      value: class MockBarcodeDetector {
+        async detect() {
+          return []
+        }
+      },
+    })
+
+    render(<App />)
+
+    await user.click(screen.getByRole('radio', { name: '사용자' }))
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com')
+    await user.type(screen.getByLabelText('비밀번호'), 'password1234')
+    await user.click(screen.getByRole('button', { name: '로그인' }))
+
+    await screen.findByRole('heading', { name: /소희 홈/i })
+    await user.click(screen.getByRole('button', { name: '메뉴' }))
+    await user.click(screen.getByRole('button', { name: /밴드 QR을 카메라로 스캔해요\./ }))
+    await user.click(screen.getByRole('button', { name: '카메라 켜기' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toContain('카메라가 켜졌습니다.')
+    })
+    expect(getUserMedia).toHaveBeenCalledWith({
+      video: {
+        deviceId: {
+          exact: 'usb-webcam',
+        },
+      },
+    })
   })
 
   it('shows invalid login error and keeps the user on login screen', async () => {
@@ -260,7 +509,9 @@ describe('App login to home flow', () => {
 })
 
 function installMockBackend() {
+  let homeSummary = structuredClone(mockHomeSummary)
   let alerts = structuredClone(mockAppPreview.alerts)
+  let devices = structuredClone(mockAppPreview.devices)
   const accounts = new Map([
     [
       'USER:user@example.com',
@@ -383,11 +634,15 @@ function installMockBackend() {
         )
       }
 
-      return jsonResponse(mockHomeSummary)
+      return jsonResponse(homeSummary)
     }
 
     if (url === `${API_BASE_URL}/api/alerts?limit=20` && method === 'GET') {
       return jsonResponse({ items: alerts })
+    }
+
+    if (url === `${API_BASE_URL}/api/devices` && method === 'GET') {
+      return jsonResponse({ items: devices })
     }
 
     const alertActionMatch = url.match(/\/api\/alerts\/(\d+)\/(confirm|replay)$/)
@@ -400,17 +655,61 @@ function installMockBackend() {
     }
 
     if (url === `${API_BASE_URL}/api/emergency-requests` && method === 'POST') {
+      const emergencyAlert = {
+        alertId: 301,
+        type: 'EMERGENCY',
+        severity: 'CRITICAL',
+        title: '긴급 지원 요청 접수',
+        message: body.message,
+        deviceName: 'Able Band 앱',
+        occurredAt: '2026-06-10T14:35:00+09:00',
+        status: 'ESCALATED',
+      }
+      alerts = [emergencyAlert, ...alerts]
+      homeSummary = {
+        ...homeSummary,
+        recentAlerts: [emergencyAlert, ...homeSummary.recentAlerts],
+      }
       return jsonResponse(
         {
           emergencyRequestId: 301,
           status: 'SENT',
-          message: '보호자에게 긴급 요청을 보냈습니다.',
+          message: body.message,
           source: 'APP',
           sentAt: '2026-06-10T14:35:00+09:00',
           guardianNotified: true,
         },
         { status: 201 },
       )
+    }
+
+    const pairingCompleteMatch = url.match(/\/api\/wearable\/pairing-sessions\/([^/]+)\/complete$/)
+    if (pairingCompleteMatch && method === 'POST') {
+      if (!body.nonce || body.pairingCode !== 'ABLE-4IN-260610') {
+        return jsonResponse(
+          { code: 'INVALID_PAIRING_PAYLOAD', message: '연동 QR 정보가 올바르지 않습니다.', details: {} },
+          { status: 400 },
+        )
+      }
+
+      const wearableDevice = {
+        deviceId: 13,
+        name: 'LG Able Band',
+        type: 'WEARABLE',
+        connectionStatus: 'CONNECTED',
+        vendor: 'LG',
+        vendorDeviceId: body.deviceId,
+        locationSupported: false,
+        remoteEnabled: true,
+      }
+      devices = [...devices.filter((device) => device.vendorDeviceId !== wearableDevice.vendorDeviceId), wearableDevice]
+      return jsonResponse({
+        pairingSessionId: pairingCompleteMatch[1],
+        status: 'PAIRED',
+        device: wearableDevice,
+        accessToken: 'api-user-token',
+        message: '웨어러블 연동이 완료되었습니다.',
+      })
     }
 
     if (url === `${API_BASE_URL}/api/guardians` && method === 'GET') {
@@ -508,7 +807,7 @@ function installSpeechSynthesisMock() {
   })
 }
 
-function installQrScannerMock(rawValue) {
+function installQrScannerMock(rawValue, { detector = true } = {}) {
   Object.defineProperty(navigator, 'mediaDevices', {
     configurable: true,
     value: {
@@ -533,7 +832,20 @@ function installQrScannerMock(rawValue) {
   })
   vi.spyOn(window.HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
     drawImage: vi.fn(),
+    getImageData: vi.fn(() => ({
+      data: new Uint8ClampedArray(640 * 480 * 4),
+      width: 640,
+      height: 480,
+    })),
   })
+  if (!detector) {
+    Object.defineProperty(window, 'BarcodeDetector', {
+      configurable: true,
+      value: undefined,
+    })
+    return
+  }
+
   Object.defineProperty(window, 'BarcodeDetector', {
     configurable: true,
     value: class MockBarcodeDetector {
@@ -541,6 +853,12 @@ function installQrScannerMock(rawValue) {
         return [{ rawValue }]
       }
     },
+  })
+}
+
+function findFetchCall(path, method = 'GET') {
+  return globalThis.fetch.mock.calls.find(([url, init = {}]) => {
+    return url === `${API_BASE_URL}${path}` && (init.method || 'GET').toUpperCase() === method
   })
 }
 

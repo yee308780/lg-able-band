@@ -1,5 +1,5 @@
 const DEFAULT_API_BASE_URL = 'http://localhost:8080'
-const ACCESS_TOKEN_STORAGE_KEY = 'lg-able-band.accessToken'
+export const ACCESS_TOKEN_STORAGE_KEY = 'lg-able-band.accessToken'
 
 export async function wearableApiRequest(path, options = {}) {
   const {
@@ -39,6 +39,14 @@ export async function wearableApiRequest(path, options = {}) {
 export function getWearableAccessToken() {
   const searchParams = new URLSearchParams(globalThis.location?.search || '')
   return searchParams.get('token') || globalThis.localStorage?.getItem(ACCESS_TOKEN_STORAGE_KEY) || ''
+}
+
+export function storeWearableAccessToken(accessToken) {
+  if (!accessToken) {
+    return
+  }
+
+  globalThis.localStorage?.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken)
 }
 
 function apiBaseUrl() {

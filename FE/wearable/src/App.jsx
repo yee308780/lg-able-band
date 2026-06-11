@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ModeSwitch } from './components/ModeSwitch'
 import { WearableFrame } from './components/WearableFrame'
 import { VoiceChatbot } from './components/VoiceChatbot'
@@ -8,27 +8,27 @@ import { PairingQrScreen } from './features/pairing/PairingQrScreen'
 import { UwbGuideScreen } from './features/uwb/UwbGuideScreen'
 import {
   confirmAlert,
-  createPairingPayload,
+  createPairingSession,
   getCurrentAlerts,
   getInitialUwbSessionId,
-  getPairingSession,
+  getPairingSessionStatus,
   getUwbSession,
   requestEmergencyHelp,
+  saveWearableAccessToken,
   stopUwbSession,
 } from './services/wearableService'
 import { triggerVibration } from './services/vibrationService'
 import './App.css'
 
 const DEFAULT_UWB_POLL_INTERVAL_MS = 2000
+const DEFAULT_PAIRING_POLL_INTERVAL_MS = 1000
 
 function App() {
   const [isPaired, setIsPaired] = useState(false)
   const [mode, setMode] = useState('alert')
   const [pairingStatus, setPairingStatus] = useState(getInitialPairingStatus)
-  const [pairing] = useState(() => {
-    const session = getPairingSession()
-    return { ...session, pairingPayload: createPairingPayload(session) }
-  })
+  const [pairing, setPairing] = useState(null)
+  const [pairingGeneration, setPairingGeneration] = useState(0)
   const [alertQueue, setAlertQueue] = useState([])
   const [alertIndex, setAlertIndex] = useState(0)
   const [alertStatuses, setAlertStatuses] = useState({})
@@ -38,8 +38,26 @@ function App() {
   const [statusMessage, setStatusMessage] = useState('')
   const [isBusy, setIsBusy] = useState(false)
   const [syncedTime, setSyncedTime] = useState(() => new Date())
+  const pairingPollTimerRef = useRef(null)
   const pairingCompleteTimerRef = useRef(null)
+  const pairingCompletedRef = useRef(false)
   const selectedAlert = alertQueue[alertIndex] || null
+
+  const completePairing = useCallback((pairedSession = {}) => {
+    if (pairingCompletedRef.current) {
+      return
+    }
+
+    pairingCompletedRef.current = true
+    saveWearableAccessToken(pairedSession.accessToken)
+    setPairingStatus('success')
+    window.clearTimeout(pairingPollTimerRef.current)
+    window.clearTimeout(pairingCompleteTimerRef.current)
+    pairingCompleteTimerRef.current = window.setTimeout(() => {
+      setIsPaired(true)
+      setMode('alert')
+    }, 80)
+  }, [])
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -51,10 +69,81 @@ function App() {
 
   useEffect(
     () => () => {
+      window.clearTimeout(pairingPollTimerRef.current)
       window.clearTimeout(pairingCompleteTimerRef.current)
     },
     [],
   )
+
+  useEffect(() => {
+    if (isPaired || isTerminalPairingStatus(pairingStatus)) {
+      return undefined
+    }
+
+    let isMounted = true
+    window.clearTimeout(pairingPollTimerRef.current)
+
+    function handlePairingStatus(nextSession) {
+      if (nextSession.status === 'success') {
+        completePairing(nextSession)
+        return
+      }
+
+      if (nextSession.status === 'expired' || nextSession.status === 'invalid') {
+        setPairingStatus(nextSession.status)
+        return
+      }
+
+      setPairingStatus('waiting')
+      pairingPollTimerRef.current = window.setTimeout(() => {
+        pollPairingSession(nextSession)
+      }, getPairingPollIntervalMs())
+    }
+
+    async function pollPairingSession(currentSession) {
+      try {
+        const nextSession = await getPairingSessionStatus(currentSession)
+        if (!isMounted || pairingCompletedRef.current) {
+          return
+        }
+
+        const mergedSession = mergePairingSession(currentSession, nextSession)
+        setPairing((current) => mergePairingSession(current, mergedSession))
+        handlePairingStatus(mergedSession)
+      } catch {
+        if (!isMounted || pairingCompletedRef.current) {
+          return
+        }
+
+        pairingPollTimerRef.current = window.setTimeout(() => {
+          pollPairingSession(currentSession)
+        }, getPairingPollIntervalMs())
+      }
+    }
+
+    async function startPairingSession() {
+      try {
+        const nextSession = await createPairingSession()
+        if (!isMounted || pairingCompletedRef.current) {
+          return
+        }
+
+        setPairing(nextSession)
+        handlePairingStatus(nextSession)
+      } catch {
+        if (isMounted) {
+          setPairingStatus('invalid')
+        }
+      }
+    }
+
+    startPairingSession()
+
+    return () => {
+      isMounted = false
+      window.clearTimeout(pairingPollTimerRef.current)
+    }
+  }, [completePairing, isPaired, pairingGeneration, pairingStatus])
 
   useEffect(() => {
     if (!isPaired || mode !== 'alert') {
@@ -221,17 +310,15 @@ function App() {
           <PairingQrScreen
             pairing={pairing}
             status={pairingStatus}
-            onPairComplete={() => {
-              setPairingStatus('success')
-              window.clearTimeout(pairingCompleteTimerRef.current)
-              pairingCompleteTimerRef.current = window.setTimeout(() => {
-                setIsPaired(true)
-                setMode('alert')
-              }, 80)
-            }}
+            showManualComplete={isManualPairingEnabled()}
+            onPairComplete={() => completePairing(pairing)}
             onResetPairing={() => {
               window.clearTimeout(pairingCompleteTimerRef.current)
+              window.clearTimeout(pairingPollTimerRef.current)
+              pairingCompletedRef.current = false
+              setPairing(null)
               setPairingStatus('waiting')
+              setPairingGeneration((current) => current + 1)
             }}
           />
         ) : null}
@@ -413,6 +500,11 @@ function getUwbPollIntervalMs() {
   return Number.isFinite(override) && override > 0 ? override : DEFAULT_UWB_POLL_INTERVAL_MS
 }
 
+function getPairingPollIntervalMs() {
+  const override = Number(window.__ABLE_BAND_PAIRING_POLL_MS__)
+  return Number.isFinite(override) && override > 0 ? override : DEFAULT_PAIRING_POLL_INTERVAL_MS
+}
+
 function getInitialPairingStatus() {
   const requestedStatus = new URLSearchParams(window.location.search).get('pairing')
   if (requestedStatus === 'expired' || requestedStatus === 'invalid') {
@@ -420,6 +512,34 @@ function getInitialPairingStatus() {
   }
 
   return 'waiting'
+}
+
+function isTerminalPairingStatus(status) {
+  return status === 'success' || status === 'expired' || status === 'invalid'
+}
+
+function isManualPairingEnabled() {
+  return window.__ABLE_BAND_PAIRING_MANUAL__ === true
+}
+
+function mergePairingSession(currentSession, nextSession) {
+  if (!currentSession) {
+    return nextSession
+  }
+
+  return {
+    ...currentSession,
+    ...nextSession,
+    pairingSessionId: nextSession.pairingSessionId || currentSession.pairingSessionId,
+    deviceId: nextSession.deviceId || currentSession.deviceId,
+    deviceName: nextSession.deviceName || currentSession.deviceName,
+    pairingCode: nextSession.pairingCode || currentSession.pairingCode,
+    nonce: nextSession.nonce || currentSession.nonce,
+    issuedAt: nextSession.issuedAt || currentSession.issuedAt,
+    expiresAt: nextSession.expiresAt || currentSession.expiresAt,
+    expiresInMinutes: nextSession.expiresInMinutes || currentSession.expiresInMinutes,
+    pairingPayload: currentSession.pairingPayload || nextSession.pairingPayload,
+  }
 }
 
 function formatEmergencyErrorMessage(error) {

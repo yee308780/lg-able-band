@@ -2,6 +2,7 @@ import { apiRequest } from './apiClient'
 import { mockHomeSummary } from '../mocks/homeMock'
 import { mockAppPreview } from '../mocks/appPreviewMock'
 import { getAlerts } from './alertService'
+import { getDevices } from './deviceService'
 
 export async function getHomeSummary() {
   try {
@@ -20,6 +21,13 @@ export async function getAppPreview() {
     preview.alerts = alerts.map((alert) => normalizeAlert(alert, preview.alerts))
   } catch {
     // Keep the separate preview fixture available while the backend is offline.
+  }
+
+  try {
+    const devices = await getDevices()
+    preview.devices = devices
+  } catch {
+    preview.devices = structuredClone(mockAppPreview.devices)
   }
 
   return preview

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import jsQR from 'jsqr'
 import { LivingSignalSettingsScreen } from '../features/living-signal'
 import { getAppPreview, getHomeSummary } from '../services/homeService'
 import { createEmergencyRequest } from '../services/emergencyService'
 import { deleteGuardian, getGuardians, linkGuardianByEmail } from '../services/guardianService'
+import { completeWearablePairing } from '../services/wearablePairingService'
 import { AlertsTab } from './AlertsTab'
 import { DevicesTab } from './DevicesTab'
 import { HomeTab } from './HomeTab'
@@ -30,6 +32,7 @@ const tabTitles = {
 }
 
 const MAX_DEVICE_COUNT = 6
+const CAMERA_FRAME_TIMEOUT_MS = 6500
 
 const connectionStatusLabels = {
   CONNECTED: '연결됨',
@@ -59,7 +62,7 @@ export function HomeScreen({ session, onLogout }) {
 
     async function loadHome() {
       try {
-        const [summary, preview] = await Promise.all([getHomeSummary(), getAppPreview()])
+        const { summary, preview } = await loadHomeData()
 
         if (isMounted) {
           setHomeState({ loading: false, error: '', summary, preview })
@@ -145,7 +148,13 @@ export function HomeScreen({ session, onLogout }) {
     setEmergencyMessage('긴급 요청을 보내는 중입니다.')
     try {
       const request = await createEmergencyRequest()
-      setEmergencyMessage(request.message || '보호자에게 긴급 요청을 보냈습니다.')
+      setEmergencyMessage(formatEmergencyRequestMessage(request))
+      try {
+        const { summary, preview } = await loadHomeData()
+        setHomeState({ loading: false, error: '', summary, preview })
+      } catch {
+        setEmergencyMessage((current) => `${current} 홈 정보는 새로고침하지 못했습니다.`)
+      }
     } catch (error) {
       setEmergencyMessage(error.message || '긴급 요청을 보내지 못했습니다.')
     } finally {
@@ -261,7 +270,13 @@ export function HomeScreen({ session, onLogout }) {
           />
         ) : null}
         {activeTab === 'menu' && menuScreen === 'wearablePairing' ? (
-          <WearablePairingScannerScreen onBack={() => setMenuScreen('root')} />
+          <WearablePairingScannerScreen
+            onBack={() => setMenuScreen('root')}
+            onPairingComplete={async () => {
+              const { summary: nextSummary, preview: nextPreview } = await loadHomeData()
+              setHomeState({ loading: false, error: '', summary: nextSummary, preview: nextPreview })
+            }}
+          />
         ) : null}
       </div>
 
@@ -415,12 +430,13 @@ function MenuTab({
   )
 }
 
-function WearablePairingScannerScreen({ onBack }) {
+function WearablePairingScannerScreen({ onBack, onPairingComplete }) {
   const [scannerMessage, setScannerMessage] = useState(
     '웨어러블 화면의 QR 코드를 프레임 안에 맞춰주세요.',
   )
   const [scanStatus, setScanStatus] = useState('ready')
   const [detectedValue, setDetectedValue] = useState('')
+  const [hasCameraPreview, setHasCameraPreview] = useState(false)
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const streamRef = useRef(null)
@@ -429,6 +445,7 @@ function WearablePairingScannerScreen({ onBack }) {
 
   function stopScanResources() {
     activeScanRef.current = false
+    setHasCameraPreview(false)
 
     if (scanFrameRef.current) {
       window.cancelAnimationFrame(scanFrameRef.current)
@@ -453,6 +470,7 @@ function WearablePairingScannerScreen({ onBack }) {
   )
 
   async function handleStartScan() {
+    stopScanResources()
     setScanStatus('scanning')
     setDetectedValue('')
 
@@ -462,28 +480,37 @@ function WearablePairingScannerScreen({ onBack }) {
       return
     }
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-      streamRef.current = stream
+    const cameraAttempts = await createCameraAttempts()
+    let lastError = null
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        await videoRef.current.play()
+    for (const constraints of cameraAttempts) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints)
+        streamRef.current = stream
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          await videoRef.current.play()
+          await waitForVideoFrame(videoRef.current)
+        }
+
+        const detector = window.BarcodeDetector
+          ? new window.BarcodeDetector({ formats: ['qr_code'] })
+          : null
+
+        activeScanRef.current = true
+        setHasCameraPreview(true)
+        setScannerMessage('카메라가 켜졌습니다. QR 코드를 프레임 안에 맞춰주세요.')
+        scanQrFrame(detector)
+        return
+      } catch (error) {
+        lastError = error
+        stopScanResources()
       }
-
-      const detector = window.BarcodeDetector
-        ? new window.BarcodeDetector({ formats: ['qr_code'] })
-        : null
-
-      activeScanRef.current = true
-      setScannerMessage('카메라가 켜졌습니다. QR 코드를 프레임 안에 맞춰주세요.')
-      scanQrFrame(detector)
-    } catch {
-      setScannerMessage(
-        '카메라 권한이 필요합니다. 브라우저 권한을 허용한 뒤 다시 시도해주세요.',
-      )
-      setScanStatus('blocked')
     }
+
+    setScannerMessage(formatCameraErrorMessage(lastError))
+    setScanStatus('blocked')
   }
 
   async function scanQrFrame(detector) {
@@ -508,10 +535,9 @@ function WearablePairingScannerScreen({ onBack }) {
       context.drawImage(video, 0, 0, canvas.width, canvas.height)
 
       try {
-        const codes = detector ? await detector.detect(canvas) : []
-        const rawValue = codes[0]?.rawValue
+        const rawValue = await detectQrValue({ canvas, context, detector })
 
-        if (rawValue && handleQrDetected(rawValue)) {
+        if (rawValue && (await handleQrDetected(rawValue))) {
           return
         }
       } catch {
@@ -525,7 +551,7 @@ function WearablePairingScannerScreen({ onBack }) {
     scanFrameRef.current = window.requestAnimationFrame(() => scanQrFrame(detector))
   }
 
-  function handleQrDetected(rawValue) {
+  async function handleQrDetected(rawValue) {
     const pairing = parseWearablePairingPayload(rawValue)
 
     if (!pairing) {
@@ -536,11 +562,20 @@ function WearablePairingScannerScreen({ onBack }) {
     }
 
     stopScanResources()
-    setScanStatus('paired')
+    setScanStatus('verifying')
     setDetectedValue(rawValue)
-    setScannerMessage(
-      `${pairing.deviceName} ${pairing.pairingCode}를 인식했습니다. 웨어러블 연동이 완료되었습니다.`,
-    )
+    setScannerMessage('연동 정보를 확인하는 중입니다.')
+
+    try {
+      const result = await completeWearablePairing(pairing)
+      setScanStatus('paired')
+      setScannerMessage(result?.message || '웨어러블 연동이 완료되었습니다.')
+      await onPairingComplete?.(result)
+    } catch (error) {
+      setScanStatus('invalid')
+      setScannerMessage(error.message || '웨어러블 연동을 완료하지 못했습니다. QR을 다시 확인해주세요.')
+    }
+
     return true
   }
 
@@ -564,11 +599,18 @@ function WearablePairingScannerScreen({ onBack }) {
         </p>
 
         <div className={`qr-scanner-preview scanner-${scanStatus}`} aria-label="QR 카메라 스캔 영역">
-          <video ref={videoRef} className="scanner-video" muted playsInline aria-hidden="true" />
+          <video
+            ref={videoRef}
+            className={hasCameraPreview ? 'scanner-video video-ready' : 'scanner-video'}
+            muted
+            autoPlay
+            playsInline
+            aria-hidden="true"
+          />
           <canvas ref={canvasRef} className="scanner-canvas" aria-hidden="true" />
           <div className="scanner-top-bar">
             <span>QR 스캔</span>
-            <span>{scanStatus === 'paired' ? '연동 완료' : '대기 중'}</span>
+            <span>{formatScannerStatus(scanStatus)}</span>
           </div>
           <div className="scanner-frame" aria-hidden="true">
             <span className="scanner-corner corner-tl" />
@@ -603,6 +645,149 @@ function WearablePairingScannerScreen({ onBack }) {
   )
 }
 
+function waitForVideoFrame(video) {
+  const timeoutMs = window.__ABLE_BAND_CAMERA_FRAME_TIMEOUT_MS__ || CAMERA_FRAME_TIMEOUT_MS
+
+  return new Promise((resolve, reject) => {
+    let timeoutId = 0
+    let frameId = 0
+    let videoFrameCallbackId = 0
+
+    function cleanup() {
+      window.clearTimeout(timeoutId)
+      window.cancelAnimationFrame(frameId)
+      if (videoFrameCallbackId && video.cancelVideoFrameCallback) {
+        video.cancelVideoFrameCallback(videoFrameCallbackId)
+      }
+      video.removeEventListener('loadedmetadata', checkFrame)
+      video.removeEventListener('canplay', checkFrame)
+      video.removeEventListener('playing', checkFrame)
+      video.removeEventListener('resize', checkFrame)
+    }
+
+    function checkFrame() {
+      if (hasReadableVideoFrame(video)) {
+        cleanup()
+        resolve()
+        return
+      }
+
+      frameId = window.requestAnimationFrame(checkFrame)
+    }
+
+    timeoutId = window.setTimeout(() => {
+      cleanup()
+      reject(new Error('NO_VIDEO_FRAME'))
+    }, timeoutMs)
+
+    if (video.requestVideoFrameCallback) {
+      videoFrameCallbackId = video.requestVideoFrameCallback(() => {
+        cleanup()
+        resolve()
+      })
+    }
+
+    video.addEventListener('loadedmetadata', checkFrame)
+    video.addEventListener('canplay', checkFrame)
+    video.addEventListener('playing', checkFrame)
+    video.addEventListener('resize', checkFrame)
+    checkFrame()
+  })
+}
+
+function hasReadableVideoFrame(video) {
+  return video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0
+}
+
+async function createCameraAttempts() {
+  const defaultCamera = { video: true }
+  const rearCamera = { video: { facingMode: { ideal: 'environment' } } }
+  const deviceCameraAttempts = await createVideoDeviceAttempts()
+
+  if (isTouchCameraDevice()) {
+    return uniqueCameraAttempts([rearCamera, ...deviceCameraAttempts, defaultCamera])
+  }
+
+  return uniqueCameraAttempts([...deviceCameraAttempts, defaultCamera, rearCamera])
+}
+
+async function createVideoDeviceAttempts() {
+  if (!navigator.mediaDevices?.enumerateDevices) {
+    return []
+  }
+
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    return devices
+      .filter((device) => device.kind === 'videoinput' && device.deviceId)
+      .sort(compareVideoDevices)
+      .map((device) => ({
+        video: {
+          deviceId: {
+            exact: device.deviceId,
+          },
+        },
+      }))
+  } catch {
+    return []
+  }
+}
+
+function compareVideoDevices(firstDevice, secondDevice) {
+  return videoDevicePriority(firstDevice) - videoDevicePriority(secondDevice)
+}
+
+function videoDevicePriority(device) {
+  const label = device.label.toLowerCase()
+
+  if (label.includes('virtual') || label.includes('mirametrix')) {
+    return 2
+  }
+
+  if (label.includes('usb') || label.includes('webcam') || label.includes('camera')) {
+    return 0
+  }
+
+  return 1
+}
+
+function uniqueCameraAttempts(attempts) {
+  const seen = new Set()
+  return attempts.filter((attempt) => {
+    const key = JSON.stringify(attempt)
+    if (seen.has(key)) {
+      return false
+    }
+
+    seen.add(key)
+    return true
+  })
+}
+
+function isTouchCameraDevice() {
+  return navigator.maxTouchPoints > 0 && window.matchMedia?.('(pointer: coarse)').matches
+}
+
+function formatCameraErrorMessage(error) {
+  if (error instanceof Error && error.name === 'NotAllowedError') {
+    return '카메라 권한이 필요합니다. 브라우저 권한을 허용한 뒤 다시 시도해주세요.'
+  }
+
+  if (error instanceof Error && error.name === 'NotReadableError') {
+    return '카메라가 다른 앱에서 사용 중일 수 있습니다. 회의 앱을 닫고 다시 시도해주세요.'
+  }
+
+  if (error instanceof Error && error.name === 'NotFoundError') {
+    return '사용 가능한 카메라를 찾지 못했습니다. 노트북 카메라 연결 상태를 확인해주세요.'
+  }
+
+  if (error instanceof Error && error.message === 'NO_VIDEO_FRAME') {
+    return '카메라가 켜졌지만 영상이 들어오지 않습니다. 다른 앱의 카메라 사용을 끄거나 노트북 카메라 설정을 확인해주세요.'
+  }
+
+  return '카메라를 시작하지 못했습니다. 브라우저 권한과 노트북 카메라 상태를 확인해주세요.'
+}
+
 function parseWearablePairingPayload(rawValue) {
   try {
     const url = new URL(rawValue)
@@ -619,8 +804,9 @@ function parseWearablePairingPayload(rawValue) {
     const pairingSessionId = params.get('pairingSessionId')
     const deviceId = params.get('deviceId')
     const pairingCode = params.get('pairingCode')
+    const nonce = params.get('nonce')
 
-    if (!pairingSessionId || !deviceId || !pairingCode) {
+    if (!pairingSessionId || !deviceId || !pairingCode || !nonce) {
       return null
     }
 
@@ -628,11 +814,56 @@ function parseWearablePairingPayload(rawValue) {
       pairingSessionId,
       deviceId,
       pairingCode,
-      deviceName: deviceId.includes('able-band') ? 'LG Able Band' : '웨어러블',
+      nonce,
+      issuedAt: params.get('issuedAt') || '',
+      expiresAt: params.get('expiresAt') || '',
+      deviceName: params.get('deviceName') || (deviceId.includes('able-band') ? 'LG Able Band' : '웨어러블'),
     }
   } catch {
     return null
   }
+}
+
+async function detectQrValue({ canvas, context, detector }) {
+  if (detector) {
+    const codes = await detector.detect(canvas)
+    const rawValue = codes[0]?.rawValue
+
+    if (rawValue) {
+      return rawValue
+    }
+  }
+
+  if (!context.getImageData) {
+    return ''
+  }
+
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height)
+  const customDecoder = window.__ABLE_BAND_QR_DECODER__
+
+  if (typeof customDecoder === 'function') {
+    const decoded = customDecoder(imageData, canvas.width, canvas.height)
+    return typeof decoded === 'string' ? decoded : decoded?.data || ''
+  }
+
+  const decoded = jsQR(imageData.data, imageData.width || canvas.width, imageData.height || canvas.height)
+  return decoded?.data || ''
+}
+
+function formatScannerStatus(scanStatus) {
+  if (scanStatus === 'paired') {
+    return '연동 완료'
+  }
+
+  if (scanStatus === 'verifying') {
+    return '확인 중'
+  }
+
+  if (scanStatus === 'invalid') {
+    return '다시 확인'
+  }
+
+  return '대기 중'
 }
 
 function formatPairingResult(rawValue) {
@@ -660,12 +891,7 @@ function GuardianConnectionScreen({
   const [message, setMessage] = useState({ tone: '', text: '' })
   const [submitting, setSubmitting] = useState(false)
   const [deletingGuardianId, setDeletingGuardianId] = useState(null)
-
-  useEffect(() => {
-    if (guardians.length === 0) {
-      setForm((current) => (current.isPrimary ? current : { ...current, isPrimary: true }))
-    }
-  }, [guardians.length])
+  const isPrimarySelected = guardians.length === 0 || form.isPrimary
 
   function handleChange(field, value) {
     setForm((current) => ({
@@ -694,7 +920,7 @@ function GuardianConnectionScreen({
     try {
       const guardian = await onLinkGuardian({
         email,
-        isPrimary: form.isPrimary,
+        isPrimary: isPrimarySelected,
         notifyOnDanger: form.notifyOnDanger,
       })
       setMessage({
@@ -764,7 +990,8 @@ function GuardianConnectionScreen({
           <label className="guardian-option-card">
             <input
               type="checkbox"
-              checked={form.isPrimary}
+              checked={isPrimarySelected}
+              disabled={guardians.length === 0}
               onChange={(event) => handleChange('isPrimary', event.target.checked)}
             />
             <span>
@@ -865,6 +1092,23 @@ function upsertGuardian(currentGuardians, guardian) {
     : withoutSameGuardian
 
   return [...nextGuardians, guardian]
+}
+
+async function loadHomeData() {
+  const [summary, preview] = await Promise.all([getHomeSummary(), getAppPreview()])
+  return { summary, preview }
+}
+
+function formatEmergencyRequestMessage(request) {
+  if (request?.guardianNotified) {
+    return '보호자에게 긴급 요청을 보냈습니다.'
+  }
+
+  if (request?.status === 'SENT') {
+    return '긴급 요청을 보냈습니다.'
+  }
+
+  return request?.message || '긴급 요청을 접수했습니다.'
 }
 
 function formatConnectionStatus(status) {

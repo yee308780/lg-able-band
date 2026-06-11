@@ -5,9 +5,14 @@ import {
   mockPairingSession,
   mockUwbSessions,
 } from '../mocks/wearableMock'
-import { wearableApiRequest } from './wearableApiClient'
+import {
+  getWearableAccessToken,
+  storeWearableAccessToken,
+  wearableApiRequest,
+} from './wearableApiClient'
 
 const DEFAULT_FALLBACK_ENABLED = true
+const DEFAULT_PAIRING_EXPIRES_IN_MINUTES = 5
 
 const defaultService = createWearableService()
 
@@ -17,7 +22,10 @@ export function createWearableService({
   fetchImpl,
   token,
 } = {}) {
-  const apiEnabled = Boolean(baseUrl || fetchImpl || token || import.meta.env.VITE_API_BASE_URL)
+  const isApiEnabled = () =>
+    Boolean(baseUrl || fetchImpl || token || import.meta.env.VITE_API_BASE_URL || getWearableAccessToken())
+  const isPairingApiEnabled = () =>
+    Boolean(baseUrl || fetchImpl || globalThis.fetch || import.meta.env.VITE_API_BASE_URL)
   const request = (path, options = {}) =>
     wearableApiRequest(path, {
       ...options,
@@ -27,13 +35,36 @@ export function createWearableService({
     })
 
   return {
+    async createPairingSession() {
+      const pairingSession = getMockPairingSession()
+      return withFallback({
+        apiEnabled: isPairingApiEnabled(),
+        fallbackEnabled,
+        fallback: getMockPairingSession,
+        request: async () =>
+          normalizePairingSession(
+            await request('/api/wearable/pairing-sessions', {
+              method: 'POST',
+              body: pairingCreateBody(pairingSession),
+            }),
+          ),
+      })
+    },
+    async getPairingSessionStatus(pairingSession) {
+      return withFallback({
+        apiEnabled: isPairingApiEnabled(),
+        fallbackEnabled,
+        fallback: () => normalizePairingSession(pairingSession),
+        request: async () => normalizePairingSession(await request(pairingStatusPath(pairingSession))),
+      })
+    },
     async getCurrentAlert() {
       const alerts = await this.getCurrentAlerts()
       return selectPriorityAlert(alerts)
     },
     async getCurrentAlerts() {
       return withFallback({
-        apiEnabled,
+        apiEnabled: isApiEnabled(),
         fallbackEnabled,
         fallback: getMockCurrentAlerts,
         request: async () => {
@@ -49,7 +80,7 @@ export function createWearableService({
       }
 
       return withFallback({
-        apiEnabled,
+        apiEnabled: isApiEnabled(),
         fallbackEnabled,
         fallback: () => confirmMockAlert(alertId),
         request: async () =>
@@ -61,7 +92,7 @@ export function createWearableService({
     },
     async replayAlert(alertId) {
       return withFallback({
-        apiEnabled,
+        apiEnabled: isApiEnabled(),
         fallbackEnabled,
         fallback: () => replayMockAlert(alertId),
         request: async () => request(`/api/alerts/${alertId}/replay`, { method: 'POST' }),
@@ -69,7 +100,7 @@ export function createWearableService({
     },
     async getUwbSession(sessionId) {
       return withFallback({
-        apiEnabled,
+        apiEnabled: isApiEnabled(),
         fallbackEnabled,
         fallback: () => getMockUwbSession(sessionId),
         request: async () => normalizeUwbSession(await request(`/api/uwb/sessions/${sessionId}`)),
@@ -77,7 +108,7 @@ export function createWearableService({
     },
     async stopUwbSession(sessionId) {
       return withFallback({
-        apiEnabled,
+        apiEnabled: isApiEnabled(),
         fallbackEnabled,
         fallback: () => stopMockUwbSession(sessionId),
         request: async () =>
@@ -90,7 +121,7 @@ export function createWearableService({
     },
     async requestEmergencyHelp(message = '도움이 필요합니다.') {
       return withFallback({
-        apiEnabled,
+        apiEnabled: isApiEnabled(),
         fallbackEnabled,
         fallback: () => requestMockEmergencyHelp(message),
         request: async () =>
@@ -107,21 +138,32 @@ export function createWearableService({
 }
 
 export function getPairingSession() {
-  return clone(mockPairingSession)
+  return getMockPairingSession()
 }
 
 export function createPairingPayload(session) {
-  const params = new URLSearchParams({
-    pairingSessionId: session.pairingSessionId,
-    deviceId: session.deviceId,
-    pairingCode: session.pairingCode,
-    nonce: session.nonce,
-    issuedAt: session.issuedAt,
-    expiresAt: session.expiresAt,
-    source: 'wearable',
-  })
+  const params = new URLSearchParams()
+  appendQueryParam(params, 'pairingSessionId', session.pairingSessionId)
+  appendQueryParam(params, 'deviceId', session.deviceId)
+  appendQueryParam(params, 'pairingCode', session.pairingCode)
+  appendQueryParam(params, 'nonce', session.nonce)
+  appendQueryParam(params, 'issuedAt', session.issuedAt)
+  appendQueryParam(params, 'expiresAt', session.expiresAt)
+  params.set('source', 'wearable')
 
   return `lg-able-band://pair?${params.toString()}`
+}
+
+export async function createPairingSession() {
+  return defaultService.createPairingSession()
+}
+
+export async function getPairingSessionStatus(pairingSession) {
+  return defaultService.getPairingSessionStatus(pairingSession)
+}
+
+export function saveWearableAccessToken(accessToken) {
+  storeWearableAccessToken(accessToken)
 }
 
 export async function getCurrentAlert() {
@@ -168,6 +210,101 @@ export function normalizeUwbSession(session) {
 export function getInitialUwbSessionId(searchParams = new URLSearchParams(window.location.search)) {
   const sessionId = Number(searchParams.get('sessionId'))
   return Number.isFinite(sessionId) && sessionId > 0 ? sessionId : 9001
+}
+
+function getMockPairingSession() {
+  return normalizePairingSession(mockPairingSession)
+}
+
+function normalizePairingSession(session) {
+  const pairingSessionId = getPairingSessionId(session)
+  const normalized = {
+    pairingSessionId,
+    deviceId: session?.deviceId || session?.device?.deviceId || '',
+    deviceName: session?.deviceName || session?.device?.name || 'LG Able Band',
+    pairingCode: session?.pairingCode || '',
+    nonce: session?.nonce || '',
+    issuedAt: session?.issuedAt || '',
+    expiresAt: session?.expiresAt || '',
+    expiresInMinutes: getPairingExpiresInMinutes(session),
+    pairingPayload: session?.pairingPayload || '',
+    status: normalizePairingStatus(session?.status),
+    accessToken: session?.accessToken || '',
+  }
+
+  return {
+    ...normalized,
+    pairingPayload: normalized.pairingPayload || createPairingPayload(normalized),
+  }
+}
+
+function getPairingSessionId(session) {
+  return String(session?.pairingSessionId || session?.sessionId || session?.id || '')
+}
+
+function getPairingExpiresInMinutes(session) {
+  if (Number.isFinite(Number(session?.expiresInMinutes))) {
+    return Number(session.expiresInMinutes)
+  }
+
+  const issuedAt = Date.parse(session?.issuedAt || '')
+  const expiresAt = Date.parse(session?.expiresAt || '')
+  if (Number.isFinite(issuedAt) && Number.isFinite(expiresAt) && expiresAt > issuedAt) {
+    return Math.max(1, Math.ceil((expiresAt - issuedAt) / 60000))
+  }
+
+  return DEFAULT_PAIRING_EXPIRES_IN_MINUTES
+}
+
+function normalizePairingStatus(status) {
+  if (!status) {
+    return 'waiting'
+  }
+
+  const normalizedStatus = String(status).toUpperCase()
+  if (normalizedStatus === 'PAIRED' || normalizedStatus === 'SUCCESS') {
+    return 'success'
+  }
+  if (normalizedStatus === 'EXPIRED') {
+    return 'expired'
+  }
+  if (normalizedStatus === 'INVALID') {
+    return 'invalid'
+  }
+  if (normalizedStatus === 'WAITING') {
+    return 'waiting'
+  }
+
+  return 'invalid'
+}
+
+function pairingStatusPath(pairingSession) {
+  const pairingSessionId = getPairingSessionId(pairingSession)
+  if (!pairingSessionId) {
+    throw new Error('연동 세션 정보를 찾을 수 없습니다.')
+  }
+
+  const params = new URLSearchParams()
+  appendQueryParam(params, 'deviceId', pairingSession?.deviceId)
+  appendQueryParam(params, 'nonce', pairingSession?.nonce)
+  const queryString = params.toString()
+  return `/api/wearable/pairing-sessions/${encodeURIComponent(pairingSessionId)}${
+    queryString ? `?${queryString}` : ''
+  }`
+}
+
+function pairingCreateBody(pairingSession) {
+  return {
+    deviceId: pairingSession.deviceId,
+    deviceName: pairingSession.deviceName,
+    pairingCode: pairingSession.pairingCode,
+  }
+}
+
+function appendQueryParam(params, key, value) {
+  if (value !== undefined && value !== null && value !== '') {
+    params.set(key, String(value))
+  }
 }
 
 function findAlert(alertId) {
