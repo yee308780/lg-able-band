@@ -17,39 +17,63 @@ const statusLabels = {
   CANCELED: '취소됨',
 }
 
+const DASHBOARD_POLL_INTERVAL_MS = 5000
+
 export function GuardianPlaceholder({ account, onLogout }) {
   const [dashboardState, setDashboardState] = useState({
     loading: true,
     error: '',
     data: null,
+    refreshing: false,
+    lastUpdatedAt: null,
   })
   const [actionMessage, setActionMessage] = useState('')
   const [activeActionPanel, setActiveActionPanel] = useState('')
 
   useEffect(() => {
     let isMounted = true
+    let pollTimer = null
 
-    async function loadDashboard() {
+    async function loadDashboard({ silent = false } = {}) {
+      if (silent) {
+        setDashboardState((current) => ({
+          ...current,
+          refreshing: Boolean(current.data),
+        }))
+      }
+
       try {
         const data = await getGuardianDashboard()
         if (isMounted) {
-          setDashboardState({ loading: false, error: '', data })
+          setDashboardState({
+            loading: false,
+            error: '',
+            data,
+            refreshing: false,
+            lastUpdatedAt: new Date().toISOString(),
+          })
         }
       } catch (error) {
         if (isMounted) {
-          setDashboardState({
+          setDashboardState((current) => ({
             loading: false,
-            error: error.message || '보호자 정보를 불러오지 못했습니다.',
-            data: null,
-          })
+            error: current.data
+              ? '최신 보호자 정보를 다시 확인하지 못했습니다.'
+              : error.message || '보호자 정보를 불러오지 못했습니다.',
+            data: current.data,
+            refreshing: false,
+            lastUpdatedAt: current.lastUpdatedAt,
+          }))
         }
       }
     }
 
     loadDashboard()
+    pollTimer = window.setInterval(() => loadDashboard({ silent: true }), DASHBOARD_POLL_INTERVAL_MS)
 
     return () => {
       isMounted = false
+      window.clearInterval(pollTimer)
     }
   }, [])
 
@@ -74,7 +98,7 @@ export function GuardianPlaceholder({ account, onLogout }) {
     )
   }
 
-  if (dashboardState.error) {
+  if (dashboardState.error && !dashboardState.data) {
     return (
       <main className="phone-screen guardian-screen">
         <p className="form-error" role="alert">
@@ -107,6 +131,21 @@ export function GuardianPlaceholder({ account, onLogout }) {
           <p>
             {dashboard.user.name} · {dashboard.user.accessibilityType}
           </p>
+          {dashboardState.lastUpdatedAt ? (
+            <p className="guardian-refresh-note">
+              마지막 갱신 {formatGuardianTime(dashboardState.lastUpdatedAt)}
+            </p>
+          ) : null}
+          {dashboardState.refreshing ? (
+            <p className="guardian-refresh-note" role="status">
+              새 긴급 알림을 확인하는 중입니다.
+            </p>
+          ) : null}
+          {dashboardState.error ? (
+            <p className="guardian-refresh-note error" role="alert">
+              {dashboardState.error}
+            </p>
+          ) : null}
           <div className="guardian-summary-grid">
             <span>위험 알림 {dashboard.summary.unreadDangerAlertCount}건</span>
             <span>긴급 요청 {dashboard.summary.emergencyRequestCount}건</span>
