@@ -278,18 +278,14 @@ describe('App login to home flow', () => {
     await user.click(screen.getByRole('button', { name: '멤버 초대' }))
     expect(screen.getByRole('heading', { name: '보호자 연결' })).toBeTruthy()
     expect(screen.getByRole('heading', { name: '긴급 알림을 받을 보호자를 등록해요.' })).toBeTruthy()
-    expect(screen.getByLabelText('이름').value).toBe('김보호')
-    expect(screen.getByLabelText('연락처').value).toBe('010-0000-0000')
-    await user.clear(screen.getByLabelText('이름'))
-    await user.type(screen.getByLabelText('이름'), '정가족')
-    await user.clear(screen.getByLabelText('연락처'))
-    await user.type(screen.getByLabelText('연락처'), '010-2222-3333')
+    expect(screen.getByLabelText('보호자 이메일')).toBeTruthy()
+    await user.type(screen.getByLabelText('보호자 이메일'), 'guardian2@example.com')
     await user.click(screen.getByRole('button', { name: '보호자 등록' }))
     await waitFor(() => {
-      expect(screen.getByRole('status').textContent).toContain('보호자 연결을 저장했습니다.')
+      expect(screen.getByRole('status').textContent).toContain('김추가 보호자와 연결했습니다.')
     })
-    expect(screen.getByText('정가족')).toBeTruthy()
-    expect(screen.getByText('010-2222-3333')).toBeTruthy()
+    expect(screen.getByText('김추가')).toBeTruthy()
+    expect(screen.getByText('010-1111-2222')).toBeTruthy()
     await user.click(screen.getByRole('button', { name: '메뉴로 돌아가기' }))
     expect(screen.getByRole('button', { name: '멤버 초대' })).toBeTruthy()
     expect(screen.getAllByText('가족').length).toBeGreaterThan(0)
@@ -402,6 +398,16 @@ function installMockBackend() {
     ],
   ])
   let nextAccountId = 3
+  let guardians = [
+    {
+      guardianId: 1,
+      name: '보호자',
+      phone: '010-0000-0000',
+      isPrimary: true,
+      notifyOnDanger: true,
+      connectionStatus: 'CONNECTED',
+    },
+  ]
 
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init = {}) => {
     await delay(REQUEST_DELAY_MS)
@@ -499,6 +505,10 @@ function installMockBackend() {
       )
     }
 
+    if (url === `${API_BASE_URL}/api/guardians` && method === 'GET') {
+      return jsonResponse({ items: guardians })
+    }
+
     if (url === `${API_BASE_URL}/api/guardians/dashboard` && method === 'GET') {
       return jsonResponse({
         user: {
@@ -537,17 +547,34 @@ function installMockBackend() {
         )
       }
 
+      if (body.isPrimary) {
+        guardians = guardians.map((guardian) => ({ ...guardian, isPrimary: false }))
+      }
+
+      const guardian = {
+        guardianId: account.guardianId,
+        name: account.name,
+        phone: account.phone || '',
+        isPrimary: body.isPrimary,
+        notifyOnDanger: body.notifyOnDanger,
+        connectionStatus: 'CONNECTED',
+      }
+      guardians = [
+        ...guardians.filter((item) => item.guardianId !== guardian.guardianId),
+        guardian,
+      ]
+
       return jsonResponse(
-        {
-          guardianId: account.guardianId,
-          name: account.name,
-          phone: account.phone || '',
-          isPrimary: body.isPrimary,
-          notifyOnDanger: body.notifyOnDanger,
-          connectionStatus: 'CONNECTED',
-        },
+        guardian,
         { status: 201 },
       )
+    }
+
+    const guardianDeleteMatch = url.match(/\/api\/guardians\/(\d+)$/)
+    if (guardianDeleteMatch && method === 'DELETE') {
+      const guardianId = Number(guardianDeleteMatch[1])
+      guardians = guardians.filter((guardian) => guardian.guardianId !== guardianId)
+      return new Response(null, { status: 204 })
     }
 
     return jsonResponse(

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { LivingSignalSettingsScreen } from '../features/living-signal'
 import { getAppPreview, getHomeSummary } from '../services/homeService'
 import { createEmergencyRequest } from '../services/emergencyService'
+import { deleteGuardian, getGuardians, linkGuardianByEmail } from '../services/guardianService'
 import { AlertsTab } from './AlertsTab'
 import { DevicesTab } from './DevicesTab'
 import { HomeTab } from './HomeTab'
@@ -30,10 +31,20 @@ const tabTitles = {
 
 const MAX_DEVICE_COUNT = 6
 
+const connectionStatusLabels = {
+  CONNECTED: '연결됨',
+  PENDING: '대기 중',
+  DISCONNECTED: '연결 해제',
+}
+
 export function HomeScreen({ session, onLogout }) {
   const [activeTab, setActiveTab] = useState('home')
   const [menuScreen, setMenuScreen] = useState('root')
   const [linkedGuardians, setLinkedGuardians] = useState([])
+  const [guardianListState, setGuardianListState] = useState({
+    loading: true,
+    error: '',
+  })
   const [emergencyMessage, setEmergencyMessage] = useState('')
   const [emergencySubmitting, setEmergencySubmitting] = useState(false)
   const [homeState, setHomeState] = useState({
@@ -52,7 +63,6 @@ export function HomeScreen({ session, onLogout }) {
 
         if (isMounted) {
           setHomeState({ loading: false, error: '', summary, preview })
-          setLinkedGuardians((current) => (current.length > 0 || !preview.guardian ? current : [preview.guardian]))
         }
       } catch {
         if (isMounted) {
@@ -67,6 +77,34 @@ export function HomeScreen({ session, onLogout }) {
     }
 
     loadHome()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadGuardians() {
+      setGuardianListState({ loading: true, error: '' })
+      try {
+        const guardians = await getGuardians()
+        if (isMounted) {
+          setLinkedGuardians(guardians.map(normalizeGuardianForView))
+          setGuardianListState({ loading: false, error: '' })
+        }
+      } catch (error) {
+        if (isMounted) {
+          setGuardianListState({
+            loading: false,
+            error: error.message || '보호자 목록을 불러오지 못했습니다.',
+          })
+        }
+      }
+    }
+
+    loadGuardians()
 
     return () => {
       isMounted = false
@@ -109,6 +147,19 @@ export function HomeScreen({ session, onLogout }) {
     } finally {
       setEmergencySubmitting(false)
     }
+  }
+
+  async function handleLinkGuardian(form) {
+    const guardian = normalizeGuardianForView(await linkGuardianByEmail(form))
+
+    setLinkedGuardians((current) => upsertGuardian(current, guardian))
+
+    return guardian
+  }
+
+  async function handleDeleteGuardian(guardianId) {
+    await deleteGuardian(guardianId)
+    setLinkedGuardians((current) => current.filter((item) => item.guardianId !== guardianId))
   }
 
   if (homeState.loading) {
@@ -200,16 +251,10 @@ export function HomeScreen({ session, onLogout }) {
         {activeTab === 'menu' && menuScreen === 'guardianConnection' ? (
           <GuardianConnectionScreen
             guardians={linkedGuardians}
+            guardianListState={guardianListState}
             onBack={() => setMenuScreen('root')}
-            onSaveGuardian={(guardian) => {
-              setLinkedGuardians((current) => [
-                ...current.filter((item) => item.guardianId !== guardian.guardianId),
-                guardian,
-              ])
-            }}
-            onRemoveGuardian={(guardianId) => {
-              setLinkedGuardians((current) => current.filter((item) => item.guardianId !== guardianId))
-            }}
+            onLinkGuardian={handleLinkGuardian}
+            onRemoveGuardian={handleDeleteGuardian}
           />
         ) : null}
       </div>
@@ -255,7 +300,7 @@ function MenuTab({
       label: member.relation || '가족',
       name: member.name,
       tone: 'guardian',
-      status: member.status || member.connectionStatus || '연결됨',
+      status: formatConnectionStatus(member.connectionStatus || member.status),
     })),
   ]
 
@@ -352,44 +397,98 @@ function MenuTab({
   )
 }
 
-function GuardianConnectionScreen({ guardians, onBack, onSaveGuardian, onRemoveGuardian }) {
+function GuardianConnectionScreen({
+  guardians,
+  guardianListState,
+  onBack,
+  onLinkGuardian,
+  onRemoveGuardian,
+}) {
   const [form, setForm] = useState({
-    name: '김보호',
-    phone: '010-0000-0000',
+    email: '',
     isPrimary: guardians.length === 0,
     notifyOnDanger: true,
   })
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState({ tone: '', text: '' })
+  const [submitting, setSubmitting] = useState(false)
+  const [deletingGuardianId, setDeletingGuardianId] = useState(null)
+
+  useEffect(() => {
+    if (guardians.length === 0) {
+      setForm((current) => (current.isPrimary ? current : { ...current, isPrimary: true }))
+    }
+  }, [guardians.length])
 
   function handleChange(field, value) {
     setForm((current) => ({
       ...current,
       [field]: value,
     }))
-    setMessage('')
+    setMessage({ tone: '', text: '' })
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
 
-    if (!form.name.trim() || !form.phone.trim()) {
-      setMessage('이름과 연락처를 입력해주세요.')
+    const email = form.email.trim()
+
+    if (!email) {
+      setMessage({ tone: 'error', text: '보호자 계정 이메일을 입력해주세요.' })
       return
     }
 
-    const guardian = {
-      guardianId: Date.now(),
-      name: form.name.trim(),
-      phone: form.phone.trim(),
-      relation: '가족',
-      isPrimary: form.isPrimary,
-      notifyOnDanger: form.notifyOnDanger,
-      status: '연결됨',
-      connectionStatus: 'CONNECTED',
+    if (!isValidEmail(email)) {
+      setMessage({ tone: 'error', text: '올바른 이메일 형식으로 입력해주세요.' })
+      return
     }
 
-    onSaveGuardian(guardian)
-    setMessage('보호자 연결을 저장했습니다.')
+    setSubmitting(true)
+    try {
+      const guardian = await onLinkGuardian({
+        email,
+        isPrimary: form.isPrimary,
+        notifyOnDanger: form.notifyOnDanger,
+      })
+      setMessage({
+        tone: 'success',
+        text: `${guardian.name || '보호자'} 보호자와 연결했습니다.`,
+      })
+      setForm((current) => ({
+        ...current,
+        email: '',
+        isPrimary: false,
+      }))
+    } catch (error) {
+      setMessage({
+        tone: 'error',
+        text: error.message || '보호자 연결을 저장하지 못했습니다.',
+      })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleRemoveGuardian(guardian) {
+    if (deletingGuardianId) {
+      return
+    }
+
+    setDeletingGuardianId(guardian.guardianId)
+    setMessage({ tone: '', text: '' })
+    try {
+      await onRemoveGuardian(guardian.guardianId)
+      setMessage({
+        tone: 'success',
+        text: `${guardian.name} 보호자 연결을 해제했습니다.`,
+      })
+    } catch (error) {
+      setMessage({
+        tone: 'error',
+        text: error.message || '보호자 연결을 해제하지 못했습니다.',
+      })
+    } finally {
+      setDeletingGuardianId(null)
+    }
   }
 
   return (
@@ -403,22 +502,13 @@ function GuardianConnectionScreen({ guardians, onBack, onSaveGuardian, onRemoveG
         <h2 id="guardian-connection-title">긴급 알림을 받을 보호자를 등록해요.</h2>
 
         <label className="field">
-          <span>이름</span>
+          <span>보호자 이메일</span>
           <input
-            type="text"
-            value={form.name}
-            onChange={(event) => handleChange('name', event.target.value)}
-            placeholder="김보호"
-          />
-        </label>
-
-        <label className="field">
-          <span>연락처</span>
-          <input
-            type="tel"
-            value={form.phone}
-            onChange={(event) => handleChange('phone', event.target.value)}
-            placeholder="010-0000-0000"
+            type="email"
+            value={form.email}
+            onChange={(event) => handleChange('email', event.target.value)}
+            placeholder="guardian@example.com"
+            autoComplete="email"
           />
         </label>
 
@@ -447,14 +537,17 @@ function GuardianConnectionScreen({ guardians, onBack, onSaveGuardian, onRemoveG
           </label>
         </div>
 
-        {message ? (
-          <p className="member-status-message" role="status">
-            {message}
+        {message.text ? (
+          <p
+            className={message.tone === 'error' ? 'member-status-message error' : 'member-status-message'}
+            role={message.tone === 'error' ? 'alert' : 'status'}
+          >
+            {message.text}
           </p>
         ) : null}
 
-        <button className="primary-button full-button" type="submit">
-          보호자 등록
+        <button className="primary-button full-button" type="submit" disabled={submitting}>
+          {submitting ? '연결 중...' : '보호자 등록'}
         </button>
       </form>
 
@@ -464,6 +557,18 @@ function GuardianConnectionScreen({ guardians, onBack, onSaveGuardian, onRemoveG
           <span>{guardians.length}명</span>
         </div>
 
+        {guardianListState.loading ? (
+          <p className="empty-state" role="status">
+            보호자 목록을 확인하는 중입니다.
+          </p>
+        ) : null}
+
+        {guardianListState.error ? (
+          <p className="member-status-message error" role="alert">
+            {guardianListState.error}
+          </p>
+        ) : null}
+
         {guardians.length > 0 ? (
           <div className="connected-guardian-list">
             {guardians.map((guardian) => (
@@ -472,18 +577,18 @@ function GuardianConnectionScreen({ guardians, onBack, onSaveGuardian, onRemoveG
                 <strong>{guardian.name}</strong>
                 <span>{guardian.phone || '연락처 미등록'}</span>
                 <div>
-                  <span className="guardian-chip">연결됨</span>
+                  <span className="guardian-chip">
+                    {formatConnectionStatus(guardian.connectionStatus)}
+                  </span>
                   {guardian.notifyOnDanger ? <span className="guardian-chip">긴급 알림 ON</span> : null}
                 </div>
                 <button
                   className="secondary-button full-button"
                   type="button"
-                  onClick={() => {
-                    onRemoveGuardian(guardian.guardianId)
-                    setMessage(`${guardian.name} 보호자 연결을 해제했습니다.`)
-                  }}
+                  disabled={deletingGuardianId === guardian.guardianId}
+                  onClick={() => handleRemoveGuardian(guardian)}
                 >
-                  연결 해제
+                  {deletingGuardianId === guardian.guardianId ? '해제 중...' : '연결 해제'}
                 </button>
               </article>
             ))}
@@ -494,4 +599,30 @@ function GuardianConnectionScreen({ guardians, onBack, onSaveGuardian, onRemoveG
       </section>
     </section>
   )
+}
+
+function normalizeGuardianForView(guardian) {
+  return {
+    ...guardian,
+    relation: guardian.relation || guardian.relationship || '가족',
+    status: formatConnectionStatus(guardian.connectionStatus || guardian.status),
+    connectionStatus: guardian.connectionStatus || guardian.status || 'CONNECTED',
+  }
+}
+
+function upsertGuardian(currentGuardians, guardian) {
+  const withoutSameGuardian = currentGuardians.filter((item) => item.guardianId !== guardian.guardianId)
+  const nextGuardians = guardian.isPrimary
+    ? withoutSameGuardian.map((item) => ({ ...item, isPrimary: false }))
+    : withoutSameGuardian
+
+  return [...nextGuardians, guardian]
+}
+
+function formatConnectionStatus(status) {
+  return connectionStatusLabels[status] || status || '연결됨'
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
