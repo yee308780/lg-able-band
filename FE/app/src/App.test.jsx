@@ -107,6 +107,28 @@ describe('App login to home flow', () => {
     })
   })
 
+  it('applies accessibility defaults when the signup disability type changes', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '회원가입' }))
+
+    expect(screen.getByRole('checkbox', { name: '음성 안내' }).checked).toBe(true)
+    expect(screen.getByRole('checkbox', { name: '진동 안내' }).checked).toBe(true)
+    expect(screen.getByRole('checkbox', { name: '고대비' }).checked).toBe(true)
+    expect(screen.getByRole('checkbox', { name: '큰 글씨' }).checked).toBe(true)
+
+    await user.click(screen.getByRole('radio', { name: '청각장애인' }))
+
+    expect(screen.getByRole('checkbox', { name: '음성 안내' }).checked).toBe(false)
+    expect(screen.getByRole('checkbox', { name: '진동 안내' }).checked).toBe(true)
+    expect(screen.getByRole('checkbox', { name: '고대비' }).checked).toBe(true)
+    expect(screen.getByRole('checkbox', { name: '큰 글씨' }).checked).toBe(true)
+
+    await user.click(screen.getByRole('checkbox', { name: '진동 안내' }))
+    expect(screen.getByRole('checkbox', { name: '진동 안내' }).checked).toBe(false)
+  })
+
   it('lets a newly signed up USER log in with the API account', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -278,18 +300,14 @@ describe('App login to home flow', () => {
     await user.click(screen.getByRole('button', { name: '멤버 초대' }))
     expect(screen.getByRole('heading', { name: '보호자 연결' })).toBeTruthy()
     expect(screen.getByRole('heading', { name: '긴급 알림을 받을 보호자를 등록해요.' })).toBeTruthy()
-    expect(screen.getByLabelText('이름').value).toBe('김보호')
-    expect(screen.getByLabelText('연락처').value).toBe('010-0000-0000')
-    await user.clear(screen.getByLabelText('이름'))
-    await user.type(screen.getByLabelText('이름'), '정가족')
-    await user.clear(screen.getByLabelText('연락처'))
-    await user.type(screen.getByLabelText('연락처'), '010-2222-3333')
+    expect(screen.getByLabelText('보호자 이메일')).toBeTruthy()
+    await user.type(screen.getByLabelText('보호자 이메일'), 'guardian2@example.com')
     await user.click(screen.getByRole('button', { name: '보호자 등록' }))
     await waitFor(() => {
-      expect(screen.getByRole('status').textContent).toContain('보호자 연결을 저장했습니다.')
+      expect(screen.getByRole('status').textContent).toContain('김추가 보호자와 연결했습니다.')
     })
-    expect(screen.getByText('정가족')).toBeTruthy()
-    expect(screen.getByText('010-2222-3333')).toBeTruthy()
+    expect(screen.getByText('김추가')).toBeTruthy()
+    expect(screen.getByText('010-1111-2222')).toBeTruthy()
     await user.click(screen.getByRole('button', { name: '메뉴로 돌아가기' }))
     expect(screen.getByRole('button', { name: '멤버 초대' })).toBeTruthy()
     expect(screen.getAllByText('가족').length).toBeGreaterThan(0)
@@ -300,6 +318,39 @@ describe('App login to home flow', () => {
     expect(screen.getByText('등록된 알림음')).toBeTruthy()
     expect(screen.getByText('Front Door Bell')).toBeTruthy()
     expect(screen.getByText('주변 소리 감지')).toBeTruthy()
+  })
+
+  it('lets a USER update accessibility settings and applies global classes', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText('이메일'), 'user@example.com')
+    await user.type(screen.getByLabelText('비밀번호'), 'password1234')
+    await user.click(screen.getByRole('button', { name: '로그인' }))
+    await screen.findByRole('heading', { name: /소희 홈/i })
+
+    const appScreen = document.querySelector('.app-screen')
+    expect(appScreen.classList.contains('high-contrast')).toBe(true)
+    expect(appScreen.classList.contains('large-text')).toBe(true)
+
+    await user.click(screen.getByRole('button', { name: '메뉴' }))
+    expect(screen.getByText('필요한 기능을 누르면 바로 적용됩니다.')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: '고대비 끄기' }))
+
+    await waitFor(() => {
+      expect(appScreen.classList.contains('high-contrast')).toBe(false)
+      expect(screen.getByRole('status').textContent).toContain('접근성 설정을 저장했습니다.')
+    })
+    expect(screen.getByRole('button', { name: '고대비 켜기' })).toBeTruthy()
+
+    const updateCall = globalThis.fetch.mock.calls.find(
+      ([url, init]) => url.endsWith('/api/users/me/accessibility') && init.method === 'PUT',
+    )
+    expect(JSON.parse(updateCall[1].body).notificationPrefs.highContrast).toBe(false)
+    expect(
+      JSON.parse(window.localStorage.getItem('lg-able-band.accessibilitySettings.user@example.com'))
+        .highContrast,
+    ).toBe(false)
   })
 
   it('routes GUARDIAN login to guardian placeholder', async () => {
@@ -402,6 +453,16 @@ function installMockBackend() {
     ],
   ])
   let nextAccountId = 3
+  let guardians = [
+    {
+      guardianId: 1,
+      name: '보호자',
+      phone: '010-0000-0000',
+      isPrimary: true,
+      notifyOnDanger: true,
+      connectionStatus: 'CONNECTED',
+    },
+  ]
 
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init = {}) => {
     await delay(REQUEST_DELAY_MS)
@@ -470,6 +531,30 @@ function installMockBackend() {
       return jsonResponse(mockHomeSummary)
     }
 
+    if (url === `${API_BASE_URL}/api/users/me` && method === 'GET') {
+      return jsonResponse({
+        role: 'USER',
+        userId: 1,
+        name: '소희',
+        email: 'user@example.com',
+        accessibilityType: 'VISUAL',
+        notificationPrefs: {
+          channels: ['VOICE', 'VIBRATION'],
+          highContrast: true,
+          largeText: true,
+        },
+        guardianLinked: true,
+      })
+    }
+
+    if (url === `${API_BASE_URL}/api/users/me/accessibility` && method === 'PUT') {
+      return jsonResponse({
+        accessibilityType: body.accessibilityType,
+        notificationPrefs: body.notificationPrefs,
+        updatedAt: '2026-06-11T12:00:00+09:00',
+      })
+    }
+
     if (url === `${API_BASE_URL}/api/alerts?limit=20` && method === 'GET') {
       return jsonResponse({ items: alerts })
     }
@@ -497,6 +582,10 @@ function installMockBackend() {
         },
         { status: 201 },
       )
+    }
+
+    if (url === `${API_BASE_URL}/api/guardians` && method === 'GET') {
+      return jsonResponse({ items: guardians })
     }
 
     if (url === `${API_BASE_URL}/api/guardians/dashboard` && method === 'GET') {
@@ -537,17 +626,34 @@ function installMockBackend() {
         )
       }
 
+      if (body.isPrimary) {
+        guardians = guardians.map((guardian) => ({ ...guardian, isPrimary: false }))
+      }
+
+      const guardian = {
+        guardianId: account.guardianId,
+        name: account.name,
+        phone: account.phone || '',
+        isPrimary: body.isPrimary,
+        notifyOnDanger: body.notifyOnDanger,
+        connectionStatus: 'CONNECTED',
+      }
+      guardians = [
+        ...guardians.filter((item) => item.guardianId !== guardian.guardianId),
+        guardian,
+      ]
+
       return jsonResponse(
-        {
-          guardianId: account.guardianId,
-          name: account.name,
-          phone: account.phone || '',
-          isPrimary: body.isPrimary,
-          notifyOnDanger: body.notifyOnDanger,
-          connectionStatus: 'CONNECTED',
-        },
+        guardian,
         { status: 201 },
       )
+    }
+
+    const guardianDeleteMatch = url.match(/\/api\/guardians\/(\d+)$/)
+    if (guardianDeleteMatch && method === 'DELETE') {
+      const guardianId = Number(guardianDeleteMatch[1])
+      guardians = guardians.filter((guardian) => guardian.guardianId !== guardianId)
+      return new Response(null, { status: 204 })
     }
 
     return jsonResponse(
