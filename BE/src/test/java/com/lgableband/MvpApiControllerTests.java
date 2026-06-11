@@ -336,16 +336,121 @@ class MvpApiControllerTests {
 			.andExpect(jsonPath("$.status").value("RESOLVED"));
 	}
 
+	@Test
+	void emergencyRequestFailsWhenUserHasNoGuardian() throws Exception {
+		String token = signupUserAndToken("noguardian-" + System.nanoTime());
+
+		this.mockMvc.perform(post("/api/emergency-requests")
+				.header("Authorization", "Bearer " + token)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "message": "보호자 없이 요청합니다.",
+					  "source": "APP"
+					}
+					"""))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("NO_GUARDIAN"));
+	}
+
+	@Test
+	void linkedGuardianDashboardShowsNewEmergencyRequest() throws Exception {
+		String suffix = "dashboard-" + System.nanoTime();
+		String userToken = signupUserAndToken(suffix);
+		String guardianEmail = signupGuardian(suffix);
+		String message = "Codex 보호자 대시보드 확인 " + suffix;
+
+		this.mockMvc.perform(post("/api/guardians/link-by-email")
+				.header("Authorization", "Bearer " + userToken)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "email": "%s",
+					  "isPrimary": true,
+					  "notifyOnDanger": true
+					}
+					""".formatted(guardianEmail)))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.connectionStatus").value("CONNECTED"));
+
+		this.mockMvc.perform(post("/api/emergency-requests")
+				.header("Authorization", "Bearer " + userToken)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "message": "%s",
+					  "source": "WEARABLE"
+					}
+					""".formatted(message)))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.status").value("SENT"))
+			.andExpect(jsonPath("$.guardianNotified").value(true))
+			.andExpect(jsonPath("$.guardianTargets[0].deliveryStatus").value("SENT"));
+
+		String guardianToken = loginToken("GUARDIAN", guardianEmail);
+
+		this.mockMvc.perform(get("/api/guardians/dashboard").header("Authorization", "Bearer " + guardianToken))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.user.name").value("Codex 사용자 " + suffix))
+			.andExpect(jsonPath("$.emergencyRequests[0].message").value(message))
+			.andExpect(jsonPath("$.emergencyRequests[0].status").value("SENT"))
+			.andExpect(jsonPath("$.summary.activeEmergency").value(true));
+	}
+
 	private String userToken() throws Exception {
-		MvcResult login = this.mockMvc.perform(post("/api/auth/login")
+		return loginToken("USER", "user@example.com");
+	}
+
+	private String signupUserAndToken(String suffix) throws Exception {
+		String email = "codex-user-" + suffix + "@example.com";
+		this.mockMvc.perform(post("/api/auth/signup")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 					{
 					  "role": "USER",
-					  "email": "user@example.com",
+					  "name": "Codex 사용자 %s",
+					  "email": "%s",
+					  "password": "password1234",
+					  "accessibilityType": "HEARING",
+					  "notificationPrefs": {
+					    "channels": ["VOICE", "VIBRATION"],
+					    "highContrast": true,
+					    "largeText": true
+					  }
+					}
+					""".formatted(suffix, email)))
+			.andExpect(status().isCreated());
+		return loginToken("USER", email);
+	}
+
+	private String signupGuardian(String suffix) throws Exception {
+		String email = "codex-guardian-" + suffix + "@example.com";
+		this.mockMvc.perform(post("/api/auth/signup")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "role": "GUARDIAN",
+					  "name": "Codex 보호자 %s",
+					  "email": "%s",
+					  "password": "password1234",
+					  "phone": "010-0000-0000",
+					  "relationship": "FAMILY"
+					}
+					""".formatted(suffix, email)))
+			.andExpect(status().isCreated());
+		return email;
+	}
+
+	private String loginToken(String role, String email) throws Exception {
+		MvcResult login = this.mockMvc.perform(post("/api/auth/login")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "role": "%s",
+					  "email": "%s",
 					  "password": "password1234"
 					}
-					"""))
+					""".formatted(role, email)))
 			.andExpect(status().isOk())
 			.andReturn();
 		return login.getResponse().getContentAsString()

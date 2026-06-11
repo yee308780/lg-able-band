@@ -59,7 +59,7 @@ public class MockDataStore {
 			new NotificationPrefs(List.of(NotificationChannel.VOICE, NotificationChannel.VIBRATION), true, true)
 		);
 		this.users.put(user.userId(), user);
-		this.guardianProfiles.put(1L, new GuardianProfile(1, 2, 1, "FAMILY", "010-0000-0000"));
+		this.guardianProfiles.put(1L, new GuardianProfile(1, 2, 1L, "FAMILY", "010-0000-0000"));
 		this.guardiansByUserId.put(1L, new ArrayList<>(List.of(
 			new Guardian(1, "김보호", "010-0000-0000", true, true, ConnectionStatus.CONNECTED)
 		)));
@@ -116,7 +116,7 @@ public class MockDataStore {
 			this.guardianProfiles.put(guardianId, new GuardianProfile(
 				guardianId,
 				accountId,
-				1,
+				null,
 				relationship == null || relationship.isBlank() ? "FAMILY" : relationship,
 				phone == null ? "" : phone
 			));
@@ -286,6 +286,13 @@ public class MockDataStore {
 		}
 
 		Guardian guardian = new Guardian(profile.guardianId(), account.name(), profile.phone(), primary, notifyOnDanger, ConnectionStatus.CONNECTED);
+		this.guardianProfiles.put(profile.guardianId(), new GuardianProfile(
+			profile.guardianId(),
+			profile.accountId(),
+			userId,
+			profile.relationship(),
+			profile.phone()
+		));
 		guardians.add(guardian);
 		return guardian;
 	}
@@ -522,7 +529,7 @@ public class MockDataStore {
 	public record UserProfile(long userId, long accountId, AccessibilityType accessibilityType, NotificationPrefs notificationPrefs) {
 	}
 
-	public record GuardianProfile(long guardianId, long accountId, long linkedUserId, String relationship, String phone) {
+	public record GuardianProfile(long guardianId, long accountId, Long linkedUserId, String relationship, String phone) {
 	}
 
 	public record NotificationPrefs(List<NotificationChannel> channels, boolean highContrast, boolean largeText) {
