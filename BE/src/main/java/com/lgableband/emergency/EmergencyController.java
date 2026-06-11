@@ -1,12 +1,8 @@
 package com.lgableband.emergency;
 
-import com.lgableband.emergency.EmergencyService.CreateEmergencyCommand;
-import com.lgableband.mock.MockDataStore;
-import com.lgableband.mock.MockDataStore.EmergencyRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
-import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -22,65 +18,47 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/emergency-requests")
 public class EmergencyController {
 
-	private final MockDataStore store;
-	private final EmergencyService service;
+	private final EmergencyService emergencyService;
 
-	public EmergencyController(MockDataStore store, EmergencyService service) {
-		this.store = store;
-		this.service = service;
+	public EmergencyController(EmergencyService emergencyService) {
+		this.emergencyService = emergencyService;
 	}
 
 	@PostMapping
-	public ResponseEntity<EmergencyRequest> create(
+	public ResponseEntity<EmergencyService.EmergencyRequestSummary> create(
 		@RequestHeader("Authorization") String authorization,
 		@Valid @RequestBody EmergencyRequestBody request
 	) {
-		long userId = this.store.requireUser(authorization).userId();
 		return ResponseEntity.status(HttpStatus.CREATED)
-			.body(this.service.create(userId, request.toCommand()));
+			.body(this.emergencyService.create(authorization, request));
 	}
 
 	@GetMapping
-	public EmergencyRequestListResponse list(@RequestHeader("Authorization") String authorization) {
-		long userId = this.store.requireUser(authorization).userId();
-		return new EmergencyRequestListResponse(this.store.emergencies(userId));
+	public EmergencyService.EmergencyRequestListResponse list(@RequestHeader("Authorization") String authorization) {
+		return this.emergencyService.list(authorization);
 	}
 
 	@GetMapping("/{emergencyRequestId}")
-	public EmergencyRequest detail(
+	public EmergencyService.EmergencyRequestSummary detail(
 		@RequestHeader("Authorization") String authorization,
 		@PathVariable long emergencyRequestId
 	) {
-		long userId = this.store.requireUser(authorization).userId();
-		return this.store.emergency(userId, emergencyRequestId);
+		return this.emergencyService.detail(authorization, emergencyRequestId);
 	}
 
 	@PatchMapping("/{emergencyRequestId}/status")
-	public EmergencyRequest updateStatus(
+	public EmergencyService.EmergencyRequestSummary updateStatus(
 		@RequestHeader("Authorization") String authorization,
 		@PathVariable long emergencyRequestId,
 		@Valid @RequestBody EmergencyStatusBody request
 	) {
-		long userId = this.store.requireUser(authorization).userId();
-		return this.store.updateEmergencyStatus(userId, emergencyRequestId, request.status());
+		return this.emergencyService.updateStatus(authorization, emergencyRequestId, request.status());
 	}
 
 	public record EmergencyRequestBody(
 		@NotBlank String message,
-		@NotBlank @Pattern(regexp = "APP|WEARABLE") String source,
-		String triggerType,
-		Integer pressCount,
-		String riskLevel,
-		Integer riskScore,
-		String location,
-		String userResponse
+		@NotBlank @Pattern(regexp = "APP|WEARABLE") String source
 	) {
-		CreateEmergencyCommand toCommand() {
-			return new CreateEmergencyCommand(message, source, triggerType, pressCount, riskLevel, riskScore, location, userResponse);
-		}
-	}
-
-	public record EmergencyRequestListResponse(List<EmergencyRequest> items) {
 	}
 
 	public record EmergencyStatusBody(

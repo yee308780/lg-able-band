@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS user_guardian (
 	user_id BIGINT NOT NULL,
 	guardian_id BIGINT NOT NULL,
 	is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+	notify_on_danger BOOLEAN NOT NULL DEFAULT TRUE,
 	created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
 	updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
 	PRIMARY KEY (map_id),
@@ -157,7 +158,7 @@ CREATE TABLE IF NOT EXISTS emergency_request (
 	CONSTRAINT fk_emergency_request_user_id FOREIGN KEY (user_id) REFERENCES app_user (user_id) ON DELETE CASCADE,
 	CONSTRAINT fk_emergency_request_alert_id FOREIGN KEY (alert_id) REFERENCES alert (alert_id),
 	CONSTRAINT ck_emergency_request_source CHECK (source IN ('APP', 'WEARABLE')),
-	CONSTRAINT ck_emergency_request_status CHECK (status IN ('PENDING', 'SENT', 'FAILED', 'CANCELED'))
+	CONSTRAINT ck_emergency_request_status CHECK (status IN ('PENDING', 'SENT', 'FAILED', 'ACKNOWLEDGED', 'RESOLVED', 'CANCELED'))
 );
 
 CREATE TABLE IF NOT EXISTS user_feedback (
