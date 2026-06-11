@@ -37,7 +37,7 @@ export function createWearableService({
         fallbackEnabled,
         fallback: getMockCurrentAlerts,
         request: async () => {
-          const response = await request('/api/alerts?status=UNREAD&limit=20', { method: 'GET' })
+          const response = await request('/api/alerts?limit=20', { method: 'GET' })
           const alerts = normalizeListResponse(response).map(normalizeAlert)
           return sortAlerts(alerts)
         },
