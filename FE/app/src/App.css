@@ -666,9 +666,7 @@ button:disabled {
   margin: 0;
 }
 
-.alert-detail-grid div,
-.voice-guide-card,
-.recommended-action-card {
+.alert-detail-grid div {
   border-radius: 8px;
   padding: 10px;
   background: #f8fafc;
@@ -685,19 +683,6 @@ button:disabled {
   color: #172033;
   font-size: 0.82rem;
   font-weight: 900;
-}
-
-.voice-guide-card,
-.recommended-action-card {
-  display: grid;
-  gap: 4px;
-}
-
-.voice-guide-card strong,
-.recommended-action-card strong {
-  color: #172033;
-  font-size: 0.9rem;
-  line-height: 1.45;
 }
 
 .warning-recommendation-card {

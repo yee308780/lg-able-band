@@ -94,11 +94,11 @@ export function AlertsTab({ accessibilityType, alerts }) {
   }
 
   async function handleReplayAlert(alert) {
-    const guide = alert.voiceGuide || alert.message
+    const guide = createAlertGuide(alert)
     const speechStarted = speakAlert(guide)
     setFeedbackMessage(
       speechStarted
-        ? `다시 듣기: ${guide}`
+        ? '알림 안내를 다시 들려드렸습니다.'
         : '이 브라우저에서는 음성 안내를 사용할 수 없습니다.',
     )
 
@@ -220,6 +220,8 @@ export function AlertsTab({ accessibilityType, alerts }) {
 }
 
 function AlertDetail({ alert, feedbackMessage, onBack, onConfirm, onReplay, warningRecommendation }) {
+  const guide = createAlertGuide(alert)
+
   return (
     <section className="content-card alert-detail-panel" aria-labelledby="alert-detail-title">
       <button className="text-button back-button" type="button" onClick={onBack}>
@@ -232,7 +234,7 @@ function AlertDetail({ alert, feedbackMessage, onBack, onConfirm, onReplay, warn
         <span>{statusLabels[alert.status] || alert.status}</span>
       </div>
       <h2 id="alert-detail-title">{alert.title}</h2>
-      <p>{alert.message}</p>
+      <p aria-label="알림 안내">{guide}</p>
 
       <dl className="alert-detail-grid">
         <div>
@@ -252,16 +254,6 @@ function AlertDetail({ alert, feedbackMessage, onBack, onConfirm, onReplay, warn
           <dd>{formatAlertTime(alert.occurredAt)}</dd>
         </div>
       </dl>
-
-      <section className="voice-guide-card" aria-label="음성 안내 문구">
-        <p className="card-label">다시 듣기 문구</p>
-        <strong>{alert.voiceGuide}</strong>
-      </section>
-
-      <section className="recommended-action-card" aria-label="필요한 조치">
-        <p className="card-label">필요한 조치</p>
-        <strong>{alert.recommendedAction}</strong>
-      </section>
 
       {warningRecommendation ? (
         <WarningRecommendationCard recommendation={warningRecommendation} />
@@ -358,6 +350,13 @@ function isUrgentAlert(alert) {
 
 function formatAlertTime(isoString) {
   return isoString.slice(11, 16)
+}
+
+function createAlertGuide(alert) {
+  return [alert.voiceGuide || alert.message, alert.recommendedAction]
+    .filter(Boolean)
+    .filter((message, index, messages) => messages.indexOf(message) === index)
+    .join(' ')
 }
 
 function speakAlert(text) {
