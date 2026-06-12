@@ -1,0 +1,10 @@
+docId,title,content,source,url,accessibilityTarget,category,priority
+DOC-001,장애인 활동지원 서비스 안내,일상생활과 사회활동이 어려운 장애인은 활동지원 급여와 복지서비스를 신청할 수 있습니다. 주민센터에서 자격과 이용 방법을 확인하세요.,보건복지부,https://www.mohw.go.kr,ALL,복지지원,MEDIUM
+DOC-002,청각장애인 보조기기 지원사업,청각장애인을 위한 보청기와 의사소통 보조기기 지원사업 신청 대상과 접수 방법을 안내합니다.,한국장애인개발원,https://www.koddi.or.kr,HEARING_IMPAIRED,보조기기,HIGH
+DOC-003,폭염 시 장애인 안전 대응,폭염과 열대야에는 야외 활동을 줄이고 물을 자주 마시며 어지럼증 등 위험 증상이 있으면 즉시 119에 도움을 요청하세요.,국민재난안전포털,https://www.safekorea.go.kr,ALL,재난/안전,URGENT
+DOC-004,장애인 취업 지원 프로그램,장애인 취업 상담과 직업훈련 및 채용 연계 서비스를 신청할 수 있습니다.,한국장애인고용공단,https://www.kead.or.kr,ALL,취업/교육,MEDIUM
+DOC-005,시각장애인 이동과 보행 안전,시각장애인은 보행 전 점자블록과 음향신호기 상태를 확인하고 위험한 이동 구간에서는 이동지원 서비스를 이용하세요.,한국시각장애인연합회,http://www.kbuwel.or.kr,VISUAL_IMPAIRED,이동/교통,URGENT
+DOC-006,재난 및 화재 대피 안내,화재나 재난 발생 시 엘리베이터를 이용하지 말고 가까운 비상구로 대피한 뒤 긴급 신고를 하세요.,소방청,https://www.nfa.go.kr,ALL,재난/안전,URGENT
+DOC-007,장애인 건강검진과 의료 지원,장애친화 건강검진기관과 재활 의료 서비스 이용 방법 및 건강 예방 정보를 안내합니다.,국립재활원,https://www.nrc.go.kr,ALL,의료/건강,MEDIUM
+DOC-008,장애인 문화행사 일반 소식,지역 장애인 문화행사와 최근 일반뉴스 및 참여 소식을 소개합니다.,LG Able Band 뉴스,https://example.com/news,ALL,일반뉴스,LOW
+DOC-009,장애인 권리와 차별 상담,장애를 이유로 차별이나 인권 침해를 경험한 경우 상담과 권리구제를 신청할 수 있습니다.,국가인권위원회,https://www.humanrights.go.kr,ALL,권리/차별,HIGH

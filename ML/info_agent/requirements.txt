@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+pydantic
+requests
+# joblib is optional and only needed when trained classifier files are added.
