@@ -28,11 +28,16 @@ import {
 } from './runtimeTiming'
 import './App.css'
 
+const PAIRED_PAIRING_STORAGE_KEY = 'lg-able-band.pairingSession'
+
 function App() {
-  const [isPaired, setIsPaired] = useState(false)
+  const initialPairing = getStoredPairedPairingSession()
+  const [isPaired, setIsPaired] = useState(Boolean(initialPairing))
   const [mode, setMode] = useState('alert')
-  const [pairingStatus, setPairingStatus] = useState(getInitialPairingStatus)
-  const [pairing, setPairing] = useState(null)
+  const [pairingStatus, setPairingStatus] = useState(() =>
+    initialPairing ? 'success' : getInitialPairingStatus(),
+  )
+  const [pairing, setPairing] = useState(initialPairing)
   const [pairingGeneration, setPairingGeneration] = useState(0)
   const [alertQueue, setAlertQueue] = useState([])
   const [alertIndex, setAlertIndex] = useState(0)
@@ -53,6 +58,7 @@ function App() {
   const resetPairingSession = useCallback((message = '') => {
     window.clearTimeout(pairingCompleteTimerRef.current)
     window.clearTimeout(pairingPollTimerRef.current)
+    clearStoredPairedPairingSession()
     pairingCompletedRef.current = false
     isUwbPollingRef.current = true
     setIsPaired(false)
@@ -77,6 +83,8 @@ function App() {
 
     pairingCompletedRef.current = true
     saveWearableAccessToken(pairedSession.accessToken)
+    storePairedPairingSession(pairedSession)
+    setPairing((current) => mergePairingSession(current, pairedSession))
     setPairingStatus('success')
     window.clearTimeout(pairingPollTimerRef.current)
     window.clearTimeout(pairingCompleteTimerRef.current)
@@ -556,6 +564,54 @@ function getInitialPairingStatus() {
   }
 
   return 'waiting'
+}
+
+function getStoredPairedPairingSession() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(PAIRED_PAIRING_STORAGE_KEY) || 'null')
+    if (!isPersistablePairingSession(stored)) {
+      return null
+    }
+
+    return {
+      ...stored,
+      status: 'success',
+    }
+  } catch {
+    clearStoredPairedPairingSession()
+    return null
+  }
+}
+
+function storePairedPairingSession(session) {
+  if (!isPersistablePairingSession(session) || !session.accessToken) {
+    return
+  }
+
+  localStorage.setItem(
+    PAIRED_PAIRING_STORAGE_KEY,
+    JSON.stringify({
+      pairingSessionId: session.pairingSessionId,
+      deviceId: session.deviceId,
+      deviceName: session.deviceName,
+      pairingCode: session.pairingCode,
+      nonce: session.nonce,
+      issuedAt: session.issuedAt,
+      expiresAt: session.expiresAt,
+      expiresInMinutes: session.expiresInMinutes,
+      pairingPayload: session.pairingPayload,
+      accessToken: session.accessToken,
+      status: 'success',
+    }),
+  )
+}
+
+function clearStoredPairedPairingSession() {
+  localStorage.removeItem(PAIRED_PAIRING_STORAGE_KEY)
+}
+
+function isPersistablePairingSession(session) {
+  return Boolean(session?.pairingSessionId && session?.deviceId && session?.nonce)
 }
 
 function isTerminalPairingStatus(status) {

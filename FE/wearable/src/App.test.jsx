@@ -118,6 +118,13 @@ describe('Wearable MVP', () => {
     expect(screen.getByText('위험 알림')).toBeTruthy()
     expect(screen.getByText('안전 전기레인지')).toBeTruthy()
     expect(screen.getByLabelText('1/3')).toBeTruthy()
+    expect(JSON.parse(localStorage.getItem('lg-able-band.pairingSession'))).toMatchObject({
+      pairingSessionId: 'pairing-api-001',
+      deviceId: 'able-band-api-001',
+      nonce: 'nonce-api-001',
+      accessToken: 'paired-api-token',
+      status: 'success',
+    })
 
     fireEvent.click(screen.getByRole('button', { name: '다음 알림' }))
     expect(screen.getByRole('heading', { name: '도어센서 열림' })).toBeTruthy()
@@ -126,6 +133,30 @@ describe('Wearable MVP', () => {
     fireEvent.click(screen.getByRole('button', { name: '다음 알림' }))
     expect(screen.getByRole('heading', { name: '냉장고 문 열림' })).toBeTruthy()
     expect(screen.getByLabelText('3/3')).toBeTruthy()
+  })
+
+  it('restores paired wearable state after refresh without generating a new QR', async () => {
+    localStorage.setItem('lg-able-band.accessToken', 'paired-api-token')
+    localStorage.setItem(
+      'lg-able-band.pairingSession',
+      JSON.stringify({
+        ...pairingApiSession,
+        accessToken: 'paired-api-token',
+        status: 'success',
+      }),
+    )
+    const apiFetch = setupPairingApi({ statuses: ['WAITING'] })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: '전기레인지 과열 주의' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: '휴대폰으로 연동' })).toBeNull()
+    expect(
+      apiFetch.mock.calls.find(
+        ([url, options = {}]) =>
+          String(url) === '/api/wearable/pairing-sessions' && options.method === 'POST',
+      ),
+    ).toBeUndefined()
   })
 
   it('usesConfiguredPairingPollInterval', async () => {
