@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+pydantic
+requests
+pandas
+numpy
+feedparser
+beautifulsoup4
+python-dotenv
+xmltodict
+openpyxl
+scikit-learn==1.6.1
+joblib
