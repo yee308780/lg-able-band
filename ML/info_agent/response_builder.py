@@ -1,5 +1,6 @@
 """Build app, band, voice, and notification responses from RAG results."""
 
+import re
 from typing import Any
 
 try:
@@ -66,27 +67,79 @@ def _band_message(query: str, category: str, priority: str) -> str:
         return "점자기기 지원"
     if "폭염" in query:
         return "폭염 안전 안내"
-    return CATEGORY_LABELS.get(category, "관련 정보 안내")
+    return _truncate(CATEGORY_LABELS.get(category, "관련 정보 안내"), 24)
+
+
+def _truncate(text: str, limit: int) -> str:
+    normalized = " ".join(str(text).split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: limit - 3].rstrip(" ,.;…") + "..."
+
+
+def _deduplicate_text(text: str, title: str = "") -> str:
+    normalized = " ".join(str(text).split())
+    if not normalized:
+        return ""
+
+    title_text = " ".join(str(title).split())
+    if title_text and normalized.startswith(title_text):
+        normalized = normalized[len(title_text) :].lstrip(" |:-")
+
+    sentences = re.split(r"(?<=[.!?])\s+|[\r\n]+", normalized)
+    unique_sentences = []
+    seen = set()
+    for sentence in sentences:
+        sentence = sentence.strip()
+        key = re.sub(r"\s+", "", sentence)
+        if not sentence or key in seen:
+            continue
+        seen.add(key)
+        unique_sentences.append(sentence)
+
+    cleaned = " ".join(unique_sentences)
+    words = cleaned.split()
+    for size in range(len(words) // 2, 5, -1):
+        for start in range(0, len(words) - size * 2 + 1):
+            if words[start : start + size] == words[start + size : start + size * 2]:
+                words = words[: start + size] + words[start + size * 2 :]
+                cleaned = " ".join(words)
+                return cleaned
+    return cleaned
 
 
 def _app_summary(document: dict[str, Any], category: str, priority: str) -> str:
-    title = document.get("title") or "관련 정보"
-    summary = str(document.get("summary") or "").strip()
+    title = str(document.get("title") or "관련 정보").strip()
+    summary = _deduplicate_text(document.get("summary", ""), title)
     priority_text = (
         "긴급하게 확인해야 하는 정보입니다."
         if priority == "URGENT"
         else f"{category} 관련 정보입니다."
     )
-    if summary:
-        return f"{title} 안내입니다. {summary} {priority_text}"
-    return f"{title} 안내입니다. {priority_text}"
+    title_intro = f"{_truncate(title, 60)} 안내입니다."
+    if not summary:
+        return _truncate(f"{title_intro} {priority_text}", 220)
+
+    sentences = re.split(r"(?<=[.!?])\s+", summary)
+    summary = sentences[0]
+    return _truncate(f"{title_intro} {summary} {priority_text}", 220)
 
 
 def _message_title(title: str, limit: int = 45) -> str:
-    normalized = " ".join(title.split())
-    if len(normalized) <= limit:
-        return normalized
-    return normalized[: limit - 1].rstrip() + "..."
+    return _truncate(title, limit)
+
+
+def _voice_message(title: str, action: str, priority: str) -> str:
+    short_title = _message_title(title, 40)
+    if priority == "URGENT":
+        return _truncate(f"긴급 안내입니다. {action}", 140)
+    return _truncate(f"{short_title} 안내입니다. {action}", 140)
+
+
+def _notification_message(title: str, action: str, priority: str) -> str:
+    short_title = _message_title(title, 50)
+    prefix = "긴급 정보입니다." if priority == "URGENT" else f"{short_title} 정보입니다."
+    return _truncate(f"{prefix} {action}", 160)
 
 
 def _channels(user_type: str, priority: str) -> list[str]:
@@ -186,10 +239,9 @@ def build_info_response(
         app_summary = _app_summary(representative, category, priority)
         source = representative.get("source", "")
         url = representative.get("url", "")
-        message_title = _message_title(title)
-        notification = f"{message_title} 정보입니다. {action}"
-        voice = f"{message_title} 안내입니다. {action}"
-        band_message = _band_message(query, category, priority)
+        notification = _notification_message(title, action, priority)
+        voice = _voice_message(title, action, priority)
+        band_message = _truncate(_band_message(query, category, priority), 24)
     else:
         title = "관련 정보 안내"
         app_summary = NO_RESULT_MESSAGE

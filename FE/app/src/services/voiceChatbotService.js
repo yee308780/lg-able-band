@@ -1,4 +1,4 @@
-const DEFAULT_SOUND_CHATBOT_URL = 'http://127.0.0.1:8002/api/ai/voice-chat'
+const DEFAULT_VOICE_CHATBOT_URL = '/api/ai/voice-chat'
 
 export async function requestVoiceChat(payload) {
   const response = await fetch(soundChatbotUrl(), {
@@ -19,5 +19,5 @@ export async function requestVoiceChat(payload) {
 }
 
 export function soundChatbotUrl() {
-  return import.meta.env.VITE_SOUND_CHATBOT_URL?.trim() || DEFAULT_SOUND_CHATBOT_URL
+  return import.meta.env.VITE_SOUND_CHATBOT_URL?.trim() || DEFAULT_VOICE_CHATBOT_URL
 }
