@@ -2,6 +2,12 @@
 setlocal
 cd /d "%~dp0"
 
+set "TARGET_PORT=%~1"
+set "TARGET_NAME=%~2"
+
+if not defined TARGET_PORT set "TARGET_PORT=5173"
+if not defined TARGET_NAME set "TARGET_NAME=FE/app"
+
 set "NGROK_BIN="
 
 if exist "%~dp0ngrok.exe" (
@@ -27,13 +33,9 @@ if not defined NGROK_BIN (
   exit /b 0
 )
 
-powershell -NoProfile -Command "if (Get-Process ngrok -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }"
-if errorlevel 1 (
-  start "LGABLEBAND_NGROK_APP" cmd /k "cd /d ""%~dp0"" && ""%NGROK_BIN%"" http http://localhost:5173"
-  echo [OK] ngrok is starting for FE/app.
-  echo      After it opens, check the HTTPS forwarding URL at http://127.0.0.1:4040
-) else (
-  echo [SKIP] ngrok is already running.
-)
+powershell -NoProfile -Command "Get-Process ngrok -ErrorAction SilentlyContinue | Stop-Process -Force"
+start "LGABLEBAND_NGROK" cmd /k "cd /d ""%~dp0"" && ""%NGROK_BIN%"" http http://localhost:%TARGET_PORT%"
+echo [OK] ngrok is starting for %TARGET_NAME%.
+echo      Check the HTTPS forwarding URL at http://127.0.0.1:4040
 
 exit /b
