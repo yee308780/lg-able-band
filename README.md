@@ -39,10 +39,13 @@ cd ML/emergency && python server.py
 ## Batch Files
 
 - `start-be.bat`: starts the Spring Boot backend
-- `start-fe.bat`: starts both frontend dev servers and also starts `ngrok` for `FE/app` when available
+- `start-fe.bat`: starts both frontend dev servers
 - `start-ml.bat`: starts the context, warning, and emergency AI servers
-- `start-all.bat`: starts BE, FE, and ML together
-- `start-ngrok.bat`: starts an HTTPS tunnel for `http://localhost:5173`
+- `start-all.bat`: starts BE, FE, and ML together for normal local web testing
+- `start-ngrok-app.bat`: starts an HTTPS tunnel for `http://localhost:5173`
+- `start-ngrok-wearable.bat`: starts an HTTPS tunnel for `http://localhost:5174`
+- `start-all-app-phone.bat`: starts everything and then opens app ngrok for phone testing
+- `start-all-wearable-phone.bat`: starts everything and then opens wearable ngrok for phone testing
 - `stop-all.bat`: stops servers listening on ports `8080`, `5173`, `5174`, and `8000`-`8004`, and also stops `ngrok`
 
 ## Backend Endpoints
@@ -56,8 +59,11 @@ cd ML/emergency && python server.py
 
 - Open `http://localhost:5173` after running the backend and frontend
 - `FE/wearable` runs on `http://localhost:5174`
-- If `ngrok` is installed, `start-fe.bat` and `start-all.bat` also start an HTTPS tunnel for the app frontend
-- Check the HTTPS forwarding URL at `http://127.0.0.1:4040`
+- For normal PC web testing, just run `start-all.bat`
+- Run `start-ngrok-app.bat` when you want to view the app on your phone
+- Run `start-ngrok-wearable.bat` when you want to view the wearable on your phone
+- Or run `start-all-app-phone.bat` / `start-all-wearable-phone.bat` to start everything at once for phone testing
+- Only run one ngrok script at a time, then check the HTTPS forwarding URL at `http://127.0.0.1:4040`
 
 ## AI Servers
 
