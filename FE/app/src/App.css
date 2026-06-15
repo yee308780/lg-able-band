@@ -5889,6 +5889,27 @@ h2 {
   gap: 8px;
 }
 
+.voice-followup-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.voice-followup-close {
+  border: 0;
+  padding: 2px 4px;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.voice-followup-close:hover {
+  color: #172033;
+  text-decoration: underline;
+}
+
 .voice-sample-block {
   display: grid;
   gap: 8px;
