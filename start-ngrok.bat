@@ -29,7 +29,7 @@ if not defined NGROK_BIN (
 
 powershell -NoProfile -Command "if (Get-Process ngrok -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }"
 if errorlevel 1 (
-  start "LGABLEBAND_NGROK_APP" cmd /k "cd /d ""%~dp0"" && ""%NGROK_BIN%"" http http://localhost:5173"
+  start "LGABLEBAND_NGROK_APP" /D "%~dp0" "%NGROK_BIN%" http http://localhost:5173
   echo [OK] ngrok is starting for FE/app.
   echo      After it opens, check the HTTPS forwarding URL at http://127.0.0.1:4040
 ) else (
