@@ -36,7 +36,7 @@ describe('VoiceChatbot info agent response', () => {
     })
 
     render(<VoiceChatbot preview={{}} session={{}} summary={{}} />)
-    await user.click(screen.getByRole('button', { name: '음성 챗봇 열기' }))
+    await openTalkMode(user)
     await user.type(screen.getByLabelText('인식된 문장'), '폭염 때 어떻게 해야 해?')
     await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
 
@@ -52,7 +52,7 @@ describe('VoiceChatbot info agent response', () => {
     expect(screen.queryByText(/알림탭:/)).toBeNull()
     expect(screen.getByText('보호자에게 공유할 수 있어요.')).toBeTruthy()
     expect(screen.getByRole('button', { name: '보호자에게 이 정보 공유하기' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'AI 접근성 정보 저장하기' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'AI 접근성 정보 저장하기' })).toBeNull()
     expect(screen.getByRole('link', { name: '자세히 보기' }).target).toBe('_blank')
     expect(screen.queryByText('INFO_AGENT_QUERY · SHOW_INFO_CARD')).toBeNull()
     expect(screen.getByRole('button', { name: '지금 어떻게 해야 해?' })).toBeTruthy()
@@ -115,7 +115,7 @@ describe('VoiceChatbot info agent response', () => {
     )
 
     render(<VoiceChatbot preview={{}} session={{}} summary={{}} />)
-    await user.click(screen.getByRole('button', { name: '음성 챗봇 열기' }))
+    await openTalkMode(user)
     await user.type(screen.getByLabelText('인식된 문장'), '장애인 의료비 지원 알려줘')
     await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
     const followupButton = await screen.findByRole(
@@ -155,7 +155,71 @@ describe('VoiceChatbot info agent response', () => {
     await user.click(screen.getByRole('button', { name: '정보 후속 질문 닫기' }))
 
     expect(screen.queryByLabelText('정보 후속 질문')).toBeNull()
-    expect(screen.getByLabelText('추천 질문')).toBeTruthy()
+  })
+
+  it('shows categories first, then sends a category recommendation through the existing API', async () => {
+    const user = userEvent.setup()
+    mockVoiceChatResponse({
+      intent: 'INFO_AGENT_QUERY',
+      action: 'SHOW_INFO_CARD',
+      answerText: '장애인 활동지원 서비스 정보입니다.',
+      voiceText: '장애인 활동지원 서비스 정보입니다.',
+    })
+
+    render(<VoiceChatbot preview={{}} session={{}} summary={{}} />)
+    await openTalkMode(user)
+
+    expect(screen.getByLabelText('질문 카테고리')).toBeTruthy()
+    expect(screen.queryByLabelText('복지 정보 질문 추천 질문')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: '복지 정보 질문 선택' }))
+    expect(screen.getByLabelText('복지 정보 질문 추천 질문')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '다른 주제 선택' })).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: '장애인 활동지원 서비스 알려줘' }))
+
+    expect(await screen.findByText('장애인 활동지원 서비스 정보입니다.')).toBeTruthy()
+    await waitFor(() => {
+      expect(latestVoiceChatRequestBody()).toEqual(expect.objectContaining({
+        text: '장애인 활동지원 서비스 알려줘',
+      }))
+    })
+  })
+
+  it('renders alert cards for alert questions using available app alert data first', async () => {
+    const user = userEvent.setup()
+    mockVoiceChatResponse({
+      intent: 'READ_RECENT_ALERT',
+      action: 'READ_RECENT_ALERT',
+      answerText: '현재 새로운 알림이 1건 있습니다.',
+      voiceText: '현재 새로운 알림이 1건 있습니다.',
+    })
+
+    render(
+      <VoiceChatbot
+        preview={{}}
+        session={{}}
+        summary={{
+          recentAlerts: [
+            {
+              alertId: 77,
+              title: '안전 알림',
+              message: '외출 시 우산을 챙기세요.',
+              severity: 'LOW',
+              status: 'UNREAD',
+              occurredAt: '2026-06-16T08:30:00',
+            },
+          ],
+        }}
+      />,
+    )
+    await openTalkMode(user)
+    await user.click(screen.getByRole('button', { name: '생활/안전 알림 확인 선택' }))
+    await user.click(screen.getByRole('button', { name: '현재 알림 알려줘' }))
+
+    expect(await screen.findByLabelText('챗봇 알림 카드')).toBeTruthy()
+    expect(screen.getByText('외출 시 우산을 챙기세요.')).toBeTruthy()
+    expect(screen.queryByText('장애인 교통비 지원 신청 기간이 시작되었습니다.')).toBeNull()
   })
 
   it('keeps the existing chatbot response free of info agent controls', async () => {
@@ -168,7 +232,7 @@ describe('VoiceChatbot info agent response', () => {
     })
 
     render(<VoiceChatbot preview={{}} session={{}} summary={{}} />)
-    await user.click(screen.getByRole('button', { name: '음성 챗봇 열기' }))
+    await openTalkMode(user)
     await user.type(screen.getByLabelText('인식된 문장'), '세탁기 몇 분 남았어?')
     await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
 
@@ -201,7 +265,7 @@ describe('VoiceChatbot info agent response', () => {
     )
 
     render(<VoiceChatbot preview={{}} session={{}} summary={{}} />)
-    await user.click(screen.getByRole('button', { name: '음성 챗봇 열기' }))
+    await openTalkMode(user)
     await user.type(screen.getByLabelText('인식된 문장'), '최근 알림 읽어줘')
     await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
     await screen.findByText('최근 알림은 한 건입니다.')
@@ -211,12 +275,53 @@ describe('VoiceChatbot info agent response', () => {
     await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
 
     expect(await screen.findByText('세탁 완료까지 12분 남았습니다.')).toBeTruthy()
-    expect(screen.getAllByText('최근 알림 읽어줘').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText('최근 알림 읽어줘').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('최근 알림은 한 건입니다.')).toBeTruthy()
-    expect(screen.getAllByText('세탁기 몇 분 남았어?').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText('세탁기 몇 분 남았어?').length).toBeGreaterThanOrEqual(1)
     expect(window.HTMLElement.prototype.scrollIntoView).toHaveBeenCalled()
   }, 10000)
+
+  it('resets the visible chat after confirmation only', async () => {
+    const user = userEvent.setup()
+    mockVoiceChatResponse({
+      intent: 'INFO_AGENT_QUERY',
+      action: 'SHOW_INFO_CARD',
+      answerText: '초기화 테스트 답변입니다.',
+      voiceText: '초기화 테스트 답변입니다.',
+    })
+
+    render(<VoiceChatbot preview={{}} session={{}} summary={{}} />)
+    await openTalkMode(user)
+
+    const input = screen.getByLabelText('인식된 문장')
+    await user.type(input, '초기화 전 사용자 질문')
+    await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
+    expect(await screen.findByText('초기화 테스트 답변입니다.')).toBeTruthy()
+
+    await user.type(input, '다음 질문')
+    await user.click(screen.getByRole('button', { name: '대화 초기화' }))
+    expect(screen.getByRole('dialog', { name: '현재 대화 내용을 초기화할까요?' })).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: '취소' }))
+    expect(screen.getByText('초기화 테스트 답변입니다.')).toBeTruthy()
+    expect(input.value).toBe('다음 질문')
+
+    await user.click(screen.getByRole('button', { name: '대화 초기화' }))
+    await user.click(screen.getByRole('button', { name: '초기화' }))
+
+    expect(screen.queryByText('초기화 테스트 답변입니다.')).toBeNull()
+    expect(screen.queryByText('초기화 전 사용자 질문')).toBeNull()
+    expect(screen.getByText('안녕하세요!')).toBeTruthy()
+    expect(screen.getByText('무엇을 도와드릴까요?')).toBeTruthy()
+    expect(screen.getByLabelText('인식된 문장').value).toBe('')
+    expect(window.speechSynthesis.cancel).toHaveBeenCalled()
+  })
 })
+
+async function openTalkMode(user) {
+  await user.click(screen.getByRole('button', { name: '음성 챗봇 열기' }))
+  await user.click(screen.getByRole('button', { name: '챗봇과 대화하기 화면으로 이동' }))
+}
 
 function mockVoiceChatResponse(data) {
   mockVoiceChatResponses(data)
