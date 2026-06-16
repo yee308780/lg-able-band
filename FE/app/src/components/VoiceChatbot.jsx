@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ChatbotFeatureSelect } from './ChatbotFeatureSelect'
+import { SpeakForMeScreen } from './SpeakForMeScreen'
+import { CHATBOT_QUESTION_CATEGORIES, FALLBACK_CHAT_ALERTS } from '../data/chatbotRecommendations'
 import { requestVoiceChat } from '../services/voiceChatbotService'
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -17,15 +20,9 @@ const wakeKeywords = [
   '에이아이켜줘',
 ]
 
-const defaultPrompts = [
-  '최근 알림 읽어줘',
-  '세탁기 몇 분 남았어?',
-  '보호자한테 알려줘',
-  '장애인 의료비 지원 알려줘',
-]
-
-export function VoiceChatbot({ preview, session, summary }) {
-  const [isOpen, setIsOpen] = useState(false)
+export function VoiceChatbot({ embedded = false, onClose, preview, session, summary }) {
+  const [isOpen, setIsOpen] = useState(embedded)
+  const [assistantMode, setAssistantMode] = useState('select')
   const [isListening, setIsListening] = useState(false)
   const [inputText, setInputText] = useState('')
   const [status, setStatus] = useState('대기 중')
@@ -34,6 +31,8 @@ export function VoiceChatbot({ preview, session, summary }) {
   const [messages, setMessages] = useState([])
   const [error, setError] = useState('')
   const [isRequesting, setIsRequesting] = useState(false)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [selectedQuestionCategoryId, setSelectedQuestionCategoryId] = useState(null)
   const recognitionRef = useRef(null)
   const wakeRecognitionRef = useRef(null)
   const latestTranscriptRef = useRef('')
@@ -48,22 +47,31 @@ export function VoiceChatbot({ preview, session, summary }) {
   const conversationEndRef = useRef(null)
   const requestInFlightRef = useRef(false)
   const lastInfoAgentRef = useRef(null)
+  const chatResetVersionRef = useRef(0)
 
   const supportsSpeechRecognition = Boolean(SpeechRecognition)
   const chatbotContext = useMemo(() => createChatbotContext(summary, preview), [preview, summary])
   const hasFollowupPrompts = Boolean(followupPromptResponse?.infoCard)
+  const selectedQuestionCategory = CHATBOT_QUESTION_CATEGORIES.find(
+    (category) => category.id === selectedQuestionCategoryId,
+  )
 
   useEffect(() => {
     isOpenRef.current = isOpen
 
-    if (!isOpen) {
+    if (!embedded && !isOpen) {
       // eslint-disable-next-line react-hooks/immutability
       startWakeListening()
     }
-  }, [isOpen])
+  }, [embedded, isOpen])
 
   useEffect(() => {
-    startWakeListening()
+    if (embedded) {
+      isOpenRef.current = true
+      conversationActiveRef.current = true
+    } else {
+      startWakeListening()
+    }
 
     return () => {
       wakeListeningRef.current = false
@@ -72,7 +80,7 @@ export function VoiceChatbot({ preview, session, summary }) {
       recognitionRef.current?.stop()
       window.speechSynthesis?.cancel()
     }
-  }, [])
+  }, [embedded])
 
   useEffect(() => {
     if (typeof conversationEndRef.current?.scrollIntoView === 'function') {
@@ -80,11 +88,24 @@ export function VoiceChatbot({ preview, session, summary }) {
     }
   }, [messages, isListening, status])
 
+  function openAssistant() {
+    isOpenRef.current = true
+    stopWakeListening()
+    conversationActiveRef.current = false
+    manualStopRef.current = false
+    setAssistantMode(embedded ? 'talk' : 'select')
+    setIsOpen(true)
+    setError('')
+    setStatus('대기 중')
+  }
+
   function openChatbot() {
     isOpenRef.current = true
     stopWakeListening()
     conversationActiveRef.current = true
     manualStopRef.current = false
+    setAssistantMode('talk')
+    setSelectedQuestionCategoryId(null)
     setIsOpen(true)
     setError('')
     setStatus('안내 중...')
@@ -104,8 +125,56 @@ export function VoiceChatbot({ preview, session, summary }) {
     recognitionRef.current?.stop()
     setIsListening(false)
     setStatus('대화 종료')
-    setIsOpen(false)
-    startWakeListening()
+    setAssistantMode('select')
+    setShowResetConfirm(false)
+    setSelectedQuestionCategoryId(null)
+    if (embedded) {
+      onClose?.()
+    } else {
+      setIsOpen(false)
+      startWakeListening()
+    }
+  }
+
+  function returnToFeatureSelect() {
+    conversationActiveRef.current = false
+    manualStopRef.current = true
+    recognitionStartingRef.current = false
+    recognitionListeningRef.current = false
+    window.clearTimeout(recognitionStartTimeoutRef.current)
+    window.speechSynthesis?.cancel()
+    recognitionRef.current?.stop()
+    setIsListening(false)
+    setStatus('대기 중')
+    setAssistantMode('select')
+    setShowResetConfirm(false)
+    setSelectedQuestionCategoryId(null)
+  }
+
+  function resetChat() {
+    chatResetVersionRef.current += 1
+    conversationActiveRef.current = false
+    manualStopRef.current = true
+    recognitionStartingRef.current = false
+    recognitionListeningRef.current = false
+    requestInFlightRef.current = false
+    latestTranscriptRef.current = ''
+    sentTranscriptRef.current = ''
+    lastInfoAgentRef.current = null
+    window.clearTimeout(recognitionStartTimeoutRef.current)
+    window.speechSynthesis?.cancel()
+    recognitionRef.current?.stop()
+
+    setMessages([])
+    setInputText('')
+    setResponse(null)
+    setFollowupPromptResponse(null)
+    setError('')
+    setIsListening(false)
+    setIsRequesting(false)
+    setStatus('대기 중')
+    setShowResetConfirm(false)
+    setSelectedQuestionCategoryId(null)
   }
 
   function ensureWakeRecognition() {
@@ -363,6 +432,7 @@ export function VoiceChatbot({ preview, session, summary }) {
     const isFollowup = Boolean(displayText && visibleText !== trimmedText)
     const pendingMessage = createChatMessage('bot', '', { pending: true })
     const requestStartedAt = new Date(pendingMessage.createdAt).getTime()
+    const requestResetVersion = chatResetVersionRef.current
     requestInFlightRef.current = true
     setIsRequesting(true)
     setStatus('챗봇 응답 요청 중...')
@@ -403,36 +473,49 @@ export function VoiceChatbot({ preview, session, summary }) {
       })
 
       await waitForMinimumDuration(requestStartedAt, 350)
-      if (data.infoCard) {
-        lastInfoAgentRef.current = {
-          title: data.infoCard.title,
-          category: data.classification?.category,
-          priority: data.classification?.priority,
-          source: data.infoCard.source,
-          summary: data.infoCard.summary,
-          recommendedAction: data.infoCard.recommendedAction,
-          importantFields: infoCardImportantFields(data.infoCard),
-        }
-        setFollowupPromptResponse(data)
+      if (requestResetVersion !== chatResetVersionRef.current) {
+        return
       }
-      setResponse(data)
+
+      const enrichedData = {
+        ...data,
+        requestText: trimmedText,
+      }
+
+      if (enrichedData.infoCard) {
+        lastInfoAgentRef.current = {
+          title: enrichedData.infoCard.title,
+          category: enrichedData.classification?.category,
+          priority: enrichedData.classification?.priority,
+          source: enrichedData.infoCard.source,
+          summary: enrichedData.infoCard.summary,
+          recommendedAction: enrichedData.infoCard.recommendedAction,
+          importantFields: infoCardImportantFields(enrichedData.infoCard),
+        }
+        setFollowupPromptResponse(enrichedData)
+      }
+      setResponse(enrichedData)
       setMessages((previousMessages) => previousMessages.map((message) => (
         message.id === pendingMessage.id
           ? {
               ...message,
               pending: false,
-              text: data.answerText || '응답을 받았습니다.',
-              data,
+              text: enrichedData.answerText || '응답을 받았습니다.',
+              data: enrichedData,
               hideInfoCard: isFollowup,
             }
           : message
       )))
       setStatus('응답 중...')
-      speak(data.voiceText || data.answerText, () => {
+      speak(enrichedData.voiceText || enrichedData.answerText, () => {
         setStatus('응답 완료')
       })
     } catch (requestError) {
       await waitForMinimumDuration(requestStartedAt, 350)
+      if (requestResetVersion !== chatResetVersionRef.current) {
+        return
+      }
+
       const errorText = requestError.message || '음성 챗봇 연결에 실패했습니다.'
       setError(errorText)
       setMessages((previousMessages) => previousMessages.map((message) => (
@@ -451,8 +534,10 @@ export function VoiceChatbot({ preview, session, summary }) {
         speak('연결에 실패했어요. 잠시 후 다시 시도해 주세요.')
       }
     } finally {
-      requestInFlightRef.current = false
-      setIsRequesting(false)
+      if (requestResetVersion === chatResetVersionRef.current) {
+        requestInFlightRef.current = false
+        setIsRequesting(false)
+      }
     }
   }
 
@@ -486,27 +571,65 @@ export function VoiceChatbot({ preview, session, summary }) {
 
   return (
     <>
-      <button
-        className="voice-chatbot-fab"
-        type="button"
-        aria-label="음성 챗봇 열기"
-        onClick={openChatbot}
-      >
-        AI
-      </button>
+      {!embedded ? (
+        <button
+          className="voice-chatbot-fab"
+          type="button"
+          aria-label="음성 챗봇 열기"
+          onClick={openAssistant}
+        >
+          AI
+        </button>
+      ) : null}
 
       {isOpen ? (
-        <section className="voice-chatbot-panel" aria-label="음성 챗봇">
-          <div className="voice-chatbot-header">
-            <div className="voice-chatbot-brand">
-              <span className="voice-ai-avatar" aria-hidden="true">AI</span>
-              <div>
-                <h2>AI 음성 챗봇</h2>
-                <p className="card-label">LG Able Band</p>
+        <section className={embedded ? 'voice-chatbot-panel voice-chatbot-embedded' : 'voice-chatbot-panel'} aria-label="음성 챗봇">
+          {assistantMode === 'select' ? (
+            <>
+              <div className="voice-chatbot-header">
+                <div className="voice-chatbot-brand">
+                  <span className="voice-ai-avatar" aria-hidden="true">AI</span>
+                  <div>
+                    <h2>챗봇</h2>
+                    <p className="card-label">LG Able Band</p>
+                  </div>
+                </div>
+                <button type="button" className="voice-close-button" aria-label="챗봇 닫기" onClick={closeChatbot}>
+                  ×
+                </button>
               </div>
+              <ChatbotFeatureSelect
+                onOpenSpeak={() => setAssistantMode('speak')}
+                onOpenTalk={openChatbot}
+              />
+            </>
+          ) : null}
+
+          {assistantMode === 'speak' ? (
+            <SpeakForMeScreen onBack={returnToFeatureSelect} />
+          ) : null}
+
+          {assistantMode === 'talk' ? (
+            <>
+          <div className="voice-chatbot-header voice-talk-header">
+            <button
+              type="button"
+              className="voice-close-button voice-talk-back"
+              aria-label="챗봇 선택으로 돌아가기"
+              onClick={returnToFeatureSelect}
+            >
+              ‹
+            </button>
+            <div className="voice-talk-title">
+              <h2>챗봇과 대화하기</h2>
             </div>
-            <button type="button" className="voice-close-button" aria-label="음성 챗봇 닫기" onClick={closeChatbot}>
-              ×
+            <button
+              type="button"
+              className="voice-reset-button"
+              aria-label="대화 초기화"
+              onClick={() => setShowResetConfirm(true)}
+            >
+              ↻
             </button>
           </div>
 
@@ -522,9 +645,72 @@ export function VoiceChatbot({ preview, session, summary }) {
             aria-live="polite"
           >
             {messages.length === 0 ? (
-              <div className="voice-empty-state">
-                <strong>무엇을 확인할까요?</strong>
-                <p>알림, 가전 상태, 복지 지원 정보를 물어볼 수 있어요.</p>
+              <div className="voice-empty-state voice-chatbot-start">
+                <div className="voice-chatbot-greeting">
+                  <span className="voice-ai-avatar voice-ai-avatar-small" aria-hidden="true">AI</span>
+                  <div className="voice-greeting-bubble">
+                    <strong>안녕하세요!</strong>
+                    <span>무엇을 도와드릴까요?</span>
+                  </div>
+                </div>
+                <p>궁금한 주제를 선택하거나 직접 질문해 보세요.</p>
+                {selectedQuestionCategory ? (
+                  <div className="voice-category-prompts">
+                    <div className="voice-category-prompt-heading">
+                      <div>
+                        <strong>{selectedQuestionCategory.title}</strong>
+                        <span>아래 질문 중 하나를 선택하거나 직접 입력해 보세요.</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="text-link-button"
+                        onClick={() => setSelectedQuestionCategoryId(null)}
+                      >
+                        다른 주제 선택
+                      </button>
+                    </div>
+                    <div
+                      className="voice-category-prompt-list"
+                      aria-label={`${selectedQuestionCategory.title} 추천 질문`}
+                    >
+                      {selectedQuestionCategory.prompts.map((prompt) => (
+                        <button
+                          type="button"
+                          key={prompt}
+                          disabled={isRequesting}
+                          onClick={() => sendMessage(prompt, false)}
+                        >
+                          {prompt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="voice-start-card-list" aria-label="질문 카테고리">
+                    {CHATBOT_QUESTION_CATEGORIES.map((category) => (
+                      <button
+                        className="voice-start-card voice-category-card"
+                        type="button"
+                        key={category.id}
+                        aria-label={`${category.title} 선택`}
+                        disabled={isRequesting}
+                        onClick={() => setSelectedQuestionCategoryId(category.id)}
+                      >
+                        <span className="voice-start-card-icon voice-category-image-wrap" aria-hidden="true">
+                          {category.iconSrc ? (
+                            <img src={category.iconSrc} alt="" />
+                          ) : (
+                            category.icon
+                          )}
+                        </span>
+                        <span>
+                          <strong>{category.title}</strong>
+                          <small>{category.description}</small>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="voice-chatbot-conversation">
@@ -565,6 +751,15 @@ export function VoiceChatbot({ preview, session, summary }) {
                           response={message.data}
                           onReplay={() => speak(message.data.voiceText || message.data.answerText)}
                         />
+                      ) : null}
+
+                      {message.role === 'bot' && !message.pending && !message.error ? (
+                        <>
+                          <ChatAlertCards data={message.data} context={chatbotContext} />
+                          <MessageReplayAction
+                            onReplay={() => speak(message.data?.voiceText || message.text)}
+                          />
+                        </>
                       ) : null}
 
                     </div>
@@ -614,7 +809,7 @@ export function VoiceChatbot({ preview, session, summary }) {
               <textarea
                 value={inputText}
                 rows={1}
-                placeholder="말씀하거나 입력해 주세요."
+                placeholder="메시지를 입력하세요."
                 onChange={(event) => setInputText(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && !event.shiftKey) {
@@ -647,29 +842,43 @@ export function VoiceChatbot({ preview, session, summary }) {
               className="primary-button compact-button voice-chatbot-send"
               type="button"
               aria-label="텍스트로 보내기"
-              disabled={isRequesting || !inputText.trim()}
+              disabled={isRequesting}
               onClick={() => sendMessage(inputText, false)}
             >
               {isRequesting ? '…' : '↗'}
             </button>
           </div>
 
-          {!hasFollowupPrompts ? (
-            <div className="voice-sample-block">
-              <strong className="voice-followup-label">✦ 추천 질문</strong>
-              <div className="voice-sample-row" aria-label="추천 질문">
-                {defaultPrompts.slice(0, 4).map((prompt) => (
+          {showResetConfirm ? (
+            <div className="voice-reset-dialog-backdrop">
+              <div
+                className="voice-reset-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="voice-reset-title"
+              >
+                <h3 id="voice-reset-title">현재 대화 내용을 초기화할까요?</h3>
+                <p>화면의 대화만 비우고, 알림이나 기기 정보는 삭제하지 않습니다.</p>
+                <div className="voice-reset-dialog-actions">
                   <button
                     type="button"
-                    key={prompt}
-                    disabled={isRequesting}
-                    onClick={() => sendMessage(prompt, false)}
+                    className="voice-reset-cancel"
+                    onClick={() => setShowResetConfirm(false)}
                   >
-                    {prompt}
+                    취소
                   </button>
-                ))}
+                  <button
+                    type="button"
+                    className="voice-reset-confirm"
+                    onClick={resetChat}
+                  >
+                    초기화
+                  </button>
+                </div>
               </div>
             </div>
+          ) : null}
+            </>
           ) : null}
         </section>
       ) : null}
@@ -743,16 +952,6 @@ function InfoAgentCard({ response, onReplay }) {
         <button type="button" className="compact-button" aria-label="AI 접근성 정보 다시 듣기" onClick={onReplay}>
           다시 듣기
         </button>
-        <button
-          type="button"
-          className="compact-button"
-          aria-label="AI 접근성 정보 저장하기"
-          onClick={() => {
-            // TODO: Connect the saved information API when it is available.
-          }}
-        >
-          저장하기
-        </button>
         {showUrgentActions && response.notifyGuardian ? (
           <button
             type="button"
@@ -782,6 +981,44 @@ function InfoCardSection({ icon, title, action = false, children }) {
   )
 }
 
+function ChatAlertCards({ data, context }) {
+  if (!shouldRenderAlertCards(data)) {
+    return null
+  }
+
+  const alerts = getAlertCardsForResponse(data, context)
+
+  return (
+    <section className="voice-chat-alerts" aria-label="챗봇 알림 카드">
+      <strong>현재 새로운 알림이 {alerts.length}건 있습니다.</strong>
+      <div className="voice-chat-alert-list">
+        {alerts.map((alert) => (
+          <article className="voice-chat-alert-card" key={alert.id || `${alert.title}-${alert.time}`}>
+            <span className="voice-chat-alert-icon" aria-hidden="true">
+              {isImportantAlert(alert) ? '!' : 'i'}
+            </span>
+            <div>
+              <h3>{alert.title || '알림'}</h3>
+              <p>{alert.message || '상세 내용이 없습니다.'}</p>
+              <small>{alert.time || formatChatAlertTime(alert.createdAt)}</small>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function MessageReplayAction({ onReplay }) {
+  return (
+    <div className="voice-message-actions" aria-label="AI 답변 작업">
+      <button type="button" aria-label="AI 응답 다시 듣기" onClick={onReplay}>
+        다시 듣기
+      </button>
+    </div>
+  )
+}
+
 function createChatMessage(role, text, extra = {}) {
   return {
     id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -790,6 +1027,98 @@ function createChatMessage(role, text, extra = {}) {
     createdAt: new Date().toISOString(),
     ...extra,
   }
+}
+
+function shouldRenderAlertCards(data) {
+  const requestText = data?.requestText || ''
+  const alertIntent = ['ALERT_LIST', 'UNREAD_ALERTS_CHECK', 'DANGER_ALERTS_CHECK', 'READ_RECENT_ALERT', 'REPEAT_LAST_ALERT']
+  const alertAction = ['READ_ALERTS', 'READ_ALERT_SUMMARY', 'READ_RECENT_ALERT', 'REPEAT_LAST_ALERT']
+
+  return (
+    alertIntent.includes(data?.intent) ||
+    alertAction.includes(data?.action) ||
+    isAlertQuestion(requestText)
+  )
+}
+
+function isAlertQuestion(text) {
+  return [
+    '현재 알림',
+    '위험 알림',
+    '최근 알림',
+    '읽지 않은 알림',
+    '미확인 알림',
+    '안전 알림',
+  ].some((keyword) => text.includes(keyword))
+}
+
+function getAlertCardsForResponse(data, context) {
+  if (Array.isArray(data?.alerts) && data.alerts.length > 0) {
+    return data.alerts.map(mapAlertCard)
+  }
+
+  if (Array.isArray(data?.notificationCards) && data.notificationCards.length > 0) {
+    return data.notificationCards.map(mapAlertCard)
+  }
+
+  const requestText = data?.requestText || ''
+  const sourceAlerts = requestText.includes('위험')
+    ? context.dangerAlerts
+    : requestText.includes('읽지 않은') || requestText.includes('미확인')
+      ? context.unreadAlerts
+      : [context.recentAlert, ...context.unreadAlerts, ...context.dangerAlerts].filter(Boolean)
+
+  const uniqueAlerts = dedupeAlerts(sourceAlerts).slice(0, 3)
+
+  if (uniqueAlerts.length > 0) {
+    return uniqueAlerts.map(mapAlertCard)
+  }
+
+  return FALLBACK_CHAT_ALERTS
+}
+
+function dedupeAlerts(alerts) {
+  const seen = new Set()
+  return alerts.filter((alert) => {
+    const key = alert.id || `${alert.title}-${alert.message}-${alert.createdAt}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function mapAlertCard(alert) {
+  return {
+    id: alert.id || alert.alertId,
+    title: alert.title,
+    message: alert.message,
+    severity: alert.severity,
+    createdAt: alert.createdAt || alert.occurredAt,
+    time: alert.time || formatChatAlertTime(alert.createdAt || alert.occurredAt),
+  }
+}
+
+function isImportantAlert(alert) {
+  return ['HIGH', 'CRITICAL', 'DANGER', 'EMERGENCY'].includes(alert.severity || alert.type)
+}
+
+function formatChatAlertTime(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  const now = new Date()
+  if (
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  ) {
+    const hour = date.getHours()
+    const minute = String(date.getMinutes()).padStart(2, '0')
+    return `${hour < 12 ? '오전' : '오후'} ${hour % 12 || 12}:${minute}`
+  }
+
+  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`
 }
 
 function shouldCloseChatbot(text) {
