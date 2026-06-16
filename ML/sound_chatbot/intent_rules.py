@@ -16,6 +16,7 @@ DEVICE_KEYWORDS: Dict[str, List[str]] = {
     "TV": ["tv", "티비", "화면", "팝업"],
     "RANGE": ["인덕션", "가스레인지", "불", "화구", "주방"],
     "DOOR_SENSOR": ["문", "현관문", "도어"],
+    "WEARABLE": ["밴드", "웨어러블", "able band", "에이블 밴드"],
     "ALERT": ["알림", "알람"],
     "GUARDIAN": ["보호자", "엄마", "아빠", "가족"],
 }
@@ -30,7 +31,7 @@ PATTERN_KEYWORDS: Dict[str, List[str]] = {
     "NOTIFY": ["알려줘", "연락", "전화", "보내줘"],
     "DOOR_OPEN": ["열려", "닫혀", "문"],
     "POWER": ["켜져", "꺼져", "전원", "불"],
-    "STATUS": ["상태", "어때", "괜찮아", "문제", "확인"],
+    "STATUS": ["상태", "어때", "괜찮아", "문제", "확인", "연결"],
     "ALERT": ["알림", "알람", "뭐 왔어", "있어"],
     "HELP": ["도움말", "뭐 할 수", "사용법", "기능"],
 }
@@ -53,6 +54,8 @@ INTENT_MAP: Dict[tuple[str, str], str] = {
     ("DOOR_SENSOR", "DOOR_OPEN"): "DOOR_OPEN_CHECK",
     ("DOOR_SENSOR", "STATUS"): "DOOR_OPEN_CHECK",
     ("DOOR_SENSOR", "DANGER"): "DOOR_SECURITY_CHECK",
+    ("WEARABLE", "STATUS"): "WEARABLE_STATUS_CHECK",
+    ("WEARABLE", "NOTIFY"): "WEARABLE_STATUS_CHECK",
     ("ALERT", "UNREAD"): "UNREAD_ALERTS_CHECK",
     ("ALERT", "DANGER"): "DANGER_ALERTS_CHECK",
     ("ALERT", "RECENT"): "READ_RECENT_ALERT",

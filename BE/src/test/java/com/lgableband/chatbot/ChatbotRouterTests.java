@@ -33,7 +33,10 @@ class ChatbotRouterTests {
 		"청각장애인을 위한 수어통역 지원이 있어?",
 		"폭염 때 장애인은 어떻게 해야 해?",
 		"장애인 차별 신고 어디에 해?",
-		"시각장애인 보조기기 지원 알려줘"
+		"시각장애인 보조기기 지원 알려줘",
+		"생활가전 소리를 못 들으면 Able Band가 어떻게 알려줘?",
+		"위험알림어떻게받아?",
+		"진동알림이안오면 무엇을 확인해?"
 	})
 	void routesInformationQuestionsToInfoAgent(String question) throws Exception {
 		try (Servers servers = Servers.start()) {
@@ -90,6 +93,31 @@ class ChatbotRouterTests {
 	void existingCommandKeywordsTakePriorityOverInformationKeywords() throws Exception {
 		try (Servers servers = Servers.start()) {
 			servers.router().route(request("최근 알림 지원 내용을 읽어줘", "NONE"));
+
+			assertThat(servers.soundRequests()).isEqualTo(1);
+			assertThat(servers.infoRequests()).isZero();
+		}
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {
+		"생활가전 소리를 못 들으면 Able Band가 어떻게 알려줘?",
+		"위험알림어떻게받아?",
+		"진동알림이안오면 무엇을 확인해?"
+	})
+	void routesAbleBandFeatureHelpToInfoAgentBeforeSoundChatbot(String question) throws Exception {
+		try (Servers servers = Servers.start()) {
+			servers.router().route(request(question, "HEARING"));
+
+			assertThat(servers.infoRequests()).isEqualTo(1);
+			assertThat(servers.soundRequests()).isZero();
+		}
+	}
+
+	@Test
+	void routesBandConnectionStatusToSoundChatbotBecauseItIsLiveState() throws Exception {
+		try (Servers servers = Servers.start()) {
+			servers.router().route(request("밴드 연결 상태 알려줘", "HEARING"));
 
 			assertThat(servers.soundRequests()).isEqualTo(1);
 			assertThat(servers.infoRequests()).isZero();

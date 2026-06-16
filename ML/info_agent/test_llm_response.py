@@ -14,7 +14,7 @@ except ImportError:
 
 run_info_agent = info_agent_module.run_info_agent
 RAG_RESULT = {
-    "query": "장애인 의료비 지원 신청 방법 알려줘",
+    "query": "장애인 의료비 지원 정보 알려줘",
     "classification": {
         "category": "의료/건강",
         "accessibilityTarget": "ALL",
@@ -87,7 +87,7 @@ def test_disabled_llm_returns_existing_template(monkeypatch):
     response = run_info_agent(RAG_RESULT["query"])
 
     assert calls == []
-    assert response["answerText"] == "주소지 주민센터에 방문 신청합니다."
+    assert response["answerText"] == "장애인의료비지원 정보를 찾았어요."
     assert response["meta"]["llmUsed"] is False
     assert response["meta"]["llmFallback"] is False
     assert response["meta"]["fallbackReason"] == "disabled"
@@ -116,7 +116,7 @@ def test_llm_failure_keeps_successful_template_response(monkeypatch):
     response = run_info_agent(RAG_RESULT["query"])
 
     assert response["success"] is True
-    assert response["answerText"] == "주소지 주민센터에 방문 신청합니다."
+    assert response["answerText"] == "장애인의료비지원 정보를 찾았어요."
     assert response["meta"]["llmFallback"] is True
     assert response["meta"]["fallbackReason"] == "rate_limit"
 
@@ -196,7 +196,9 @@ def test_support_program_category_can_use_llm(monkeypatch):
 
 
 def test_missing_requested_field_never_calls_llm(monkeypatch):
+    direct_query = "장애인 의료비 지원 신청 방법 알려줘"
     sparse_result = deepcopy(RAG_RESULT)
+    sparse_result["query"] = direct_query
     sparse_result["results"][0]["importantFields"] = {
         "supportContent": "본인부담 의료비 일부를 지원합니다.",
     }
@@ -205,11 +207,27 @@ def test_missing_requested_field_never_calls_llm(monkeypatch):
     monkeypatch.setenv("INFO_AGENT_LLM_ENABLED", "true")
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
-    response = run_info_agent(RAG_RESULT["query"])
+    response = run_info_agent(direct_query)
 
     assert calls == []
     assert response["meta"]["fallbackReason"] == "insufficient_fields"
     assert "공식 기관 확인이 필요합니다" in response["answerText"]
+
+
+def test_direct_field_question_skips_llm_for_api_efficiency(monkeypatch):
+    direct_query = "장애인 의료비 지원 신청 방법 알려줘"
+    direct_result = deepcopy(RAG_RESULT)
+    direct_result["query"] = direct_query
+    install_rag_result(monkeypatch, direct_result)
+    calls = install_llm_result(monkeypatch, (LLM_RESPONSE, None))
+    monkeypatch.setenv("INFO_AGENT_LLM_ENABLED", "true")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    response = run_info_agent(direct_query)
+
+    assert calls == []
+    assert response["answerText"] == "주소지 주민센터에 방문 신청합니다."
+    assert response["meta"]["fallbackReason"] == "direct_field"
 
 
 def test_eligible_info_question_uses_llm(monkeypatch):

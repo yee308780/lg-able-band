@@ -1,6 +1,13 @@
 from unittest.mock import patch
 
+import pytest
+
 from response_builder import build_info_response
+
+
+@pytest.fixture(autouse=True)
+def disable_llm_by_default(monkeypatch):
+    monkeypatch.setenv("INFO_AGENT_LLM_ENABLED", "false")
 
 
 RAG_RESULT = {
@@ -267,6 +274,24 @@ def test_followup_can_use_last_information_card_from_history(_search):
     assert response["answerText"] == "주소지 주민센터에서 신청"
 
 
+def test_real_bokjiro_medical_expense_followup_returns_application_method():
+    response = build_info_response(
+        "장애인의료비지원 신청 방법 알려줘",
+        context={
+            "isFollowup": True,
+            "lastInfoAgent": {
+                "title": "장애인의료비지원",
+                "source": "공공데이터포털 중앙부처복지서비스",
+            },
+        },
+    )
+
+    assert response["responseType"] == "FOLLOWUP_ANSWER"
+    assert response["followupAnswer"]["type"] == "APPLY_METHOD"
+    assert "의료기관 방문시 장애인복지카드를 제시" in response["answerText"]
+    assert "명확히 제공되지 않았습니다" not in response["answerText"]
+
+
 @patch(
     "response_builder.search_documents",
     return_value={
@@ -310,6 +335,43 @@ def test_specific_initial_question_reports_missing_field_without_guessing(_searc
 
     assert "신청방법이 명확히 제공되지 않았습니다" in response["answerText"]
     assert "관할 주민센터 또는 복지 담당 부서" in response["answerText"]
+
+
+@patch("response_builder.write_cache")
+@patch("response_builder.load_cache", return_value={})
+@patch(
+    "response_builder.collect_url",
+    return_value={
+        "fetchStatus": "SUCCESS",
+        "text": (
+            "지원대상: 등록 장애인\n"
+            "신청방법: 주소지 주민센터에서 방문 신청합니다.\n"
+            "문의처: 보건복지상담센터 129"
+        ),
+    },
+)
+@patch(
+    "response_builder.search_documents",
+    return_value={
+        **RAG_RESULT,
+        "results": [
+            {
+                **RAG_RESULT["results"][0],
+                "url": "https://www.bokjiro.go.kr/service/test",
+                "importantFields": {
+                    "supportContent": "본인부담 의료비 일부를 지원합니다.",
+                },
+            }
+        ],
+    },
+)
+def test_missing_field_is_enriched_from_source_url(_search, collect_url, _load_cache, write_cache):
+    response = build_info_response("장애인의료비지원 신청 방법 알려줘")
+
+    assert response["answerText"] == "주소지 주민센터에서 방문 신청"
+    assert response["_qualityDebug"]["extractedFields"]["applyMethod"] == "주소지 주민센터에서 방문 신청"
+    collect_url.assert_called_once()
+    write_cache.assert_called_once()
 
 
 @patch(
@@ -409,7 +471,7 @@ def test_eligibility_followup_uses_summary_hints_from_last_card(_search):
     assert "기초연금 선정기준" in response["answerText"]
     assert "차상위계층" in response["answerText"]
     assert "최종 자격 여부는 공식 출처" in response["answerText"]
-    assert response["_llmMeta"]["fallbackReason"] == "followup_template"
+    assert response["_llmMeta"]["fallbackReason"] == "disabled"
 
 
 @patch("response_builder.call_llm")

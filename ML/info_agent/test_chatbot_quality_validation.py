@@ -17,7 +17,9 @@ except ImportError:
 LLM_QUESTIONS = {
     "보청기 지원 받을 수 있어?": "보조기기",
     "시각장애인 이동 지원 알려줘": "이동/교통",
-    "장애인 보조기기 신청 방법 알려줘": "보조기기",
+    "장애인 보조기기 지원 자세히 알려줘": "보조기기",
+}
+SAFETY_INFO_QUESTIONS = {
     "폭염 때 장애인은 어떻게 대비해야 해?": "재난/안전",
 }
 SOUND_QUESTIONS = (
@@ -127,6 +129,30 @@ def test_sound_and_safety_questions_do_not_route_to_info_agent(question):
     assert route_question(question) == "SOUND_CHATBOT"
 
 
+@pytest.mark.parametrize("question,category", SAFETY_INFO_QUESTIONS.items())
+def test_safety_info_questions_use_template_without_llm(monkeypatch, question, category):
+    calls = []
+    monkeypatch.setattr(
+        response_builder_module,
+        "search_documents",
+        lambda **_kwargs: deepcopy(rag_result(question, category)),
+    )
+    monkeypatch.setattr(
+        response_builder_module,
+        "call_llm",
+        lambda prompt, config: (calls.append((prompt, config)) or (LLM_RESPONSE, None)),
+    )
+
+    response = run_info_agent(question)
+    meta = response["meta"]
+
+    assert calls == []
+    assert response["success"] is True
+    assert response["responseType"] == "INFO_CARD"
+    assert meta["llmUsed"] is False
+    assert meta["llmFallbackReason"] == "safety_template"
+
+
 def test_no_result_does_not_call_llm(monkeypatch):
     calls = []
     result = rag_result("존재하지 않는 지원 질문", "복지지원")
@@ -172,7 +198,7 @@ def test_repeated_question_uses_cache(monkeypatch):
 
 @pytest.mark.parametrize("reason", ("timeout", "invalid_response", "empty_response"))
 def test_llm_failures_keep_safe_template_response(monkeypatch, reason):
-    question = "장애인 보조기기 신청 방법 알려줘"
+    question = "장애인 보조기기 지원 자세히 알려줘"
     monkeypatch.setattr(
         response_builder_module,
         "search_documents",
@@ -187,7 +213,7 @@ def test_llm_failures_keep_safe_template_response(monkeypatch, reason):
     response = run_info_agent(question)
 
     assert response["success"] is True
-    assert response["answerText"] == "주민센터에서 신청 방법을 확인합니다."
+    assert response["answerText"] == "필요한 서비스 또는 기기를 지원합니다."
     assert response["meta"]["llmUsed"] is False
     assert response["meta"]["llmFallback"] is True
     assert response["meta"]["llmFallbackReason"] == reason

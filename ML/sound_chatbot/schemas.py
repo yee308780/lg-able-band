@@ -53,6 +53,12 @@ class DoorSensorState(BaseModel):
     securityEvent: Optional[bool] = None
 
 
+class WearableState(BaseModel):
+    name: Optional[str] = None
+    connectionStatus: Optional[str] = None
+    batteryLevel: Optional[int] = None
+
+
 class DeviceStates(BaseModel):
     washer: Optional[WasherState] = None
     refrigerator: Optional[RefrigeratorState] = None
@@ -60,6 +66,7 @@ class DeviceStates(BaseModel):
     tv: Optional[TvState] = None
     range: Optional[RangeState] = None
     doorSensor: Optional[DoorSensorState] = None
+    wearable: Optional[WearableState] = None
 
 
 class ChatContext(BaseModel):

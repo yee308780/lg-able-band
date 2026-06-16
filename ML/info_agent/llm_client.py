@@ -12,7 +12,8 @@ from typing import Any
 from dotenv import load_dotenv
 
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+MODULE_DIR = Path(__file__).resolve().parent
+load_dotenv(MODULE_DIR / ".env")
 
 SYSTEM_PROMPT = (
     "너는 LG Able Band의 장애 복지 정보 안내 도우미다. "
@@ -42,6 +43,16 @@ ANSWER_SCHEMA = {
     "additionalProperties": False,
 }
 _CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_CACHE_LOADED = False
+
+
+def _cache_path() -> Path:
+    return Path(
+        os.getenv(
+            "INFO_AGENT_LLM_CACHE_PATH",
+            str(MODULE_DIR / "data" / "cache" / "llm_response_cache.json"),
+        )
+    )
 
 
 def _int_env(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -73,7 +84,7 @@ def build_cache_key(
     documents: list[dict[str, Any]],
     user_accessibility_type: str = "ALL",
 ) -> str:
-    normalized_query = " ".join(str(query or "").lower().split())
+    normalized_query = _canonical_query(query)
     document_signatures = []
     for document in documents:
         fields = _important_fields(document)
@@ -105,22 +116,87 @@ def build_cache_key(
 
 
 def get_cached_llm_response(cache_key: str) -> dict[str, Any] | None:
+    _load_cache()
     cached = _CACHE.get(cache_key)
     if not cached:
         return None
     expires_at, response = cached
-    if expires_at <= time.monotonic():
+    if expires_at <= time.time():
         _CACHE.pop(cache_key, None)
+        _write_cache()
         return None
     return response.copy()
 
 
 def cache_llm_response(cache_key: str, response: dict[str, Any], ttl_sec: int) -> None:
-    _CACHE[cache_key] = (time.monotonic() + ttl_sec, response.copy())
+    _load_cache()
+    _CACHE[cache_key] = (time.time() + ttl_sec, response.copy())
+    _write_cache()
 
 
 def clear_llm_cache() -> None:
+    global _CACHE_LOADED
     _CACHE.clear()
+    _CACHE_LOADED = True
+    try:
+        _cache_path().unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _load_cache() -> None:
+    global _CACHE_LOADED
+    if _CACHE_LOADED:
+        return
+    _CACHE_LOADED = True
+    path = _cache_path()
+    if not path.is_file():
+        return
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return
+    now = time.time()
+    for key, item in data.items() if isinstance(data, dict) else ():
+        try:
+            expires_at = float(item.get("expiresAt", 0))
+            response = item.get("response", {})
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if expires_at > now and isinstance(response, dict):
+            _CACHE[str(key)] = (expires_at, response)
+
+
+def _write_cache() -> None:
+    path = _cache_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        now = time.time()
+        payload = {
+            key: {"expiresAt": expires_at, "response": response}
+            for key, (expires_at, response) in _CACHE.items()
+            if expires_at > now
+        }
+        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _canonical_query(query: str) -> str:
+    normalized = " ".join(str(query or "").lower().split())
+    if any(keyword in normalized for keyword in ("지원 대상", "대상", "누구", "자격", "조건")):
+        return "intent:eligibility"
+    if any(keyword in normalized for keyword in ("신청 방법", "이용 방법", "신청은", "신청")):
+        return "intent:apply_method"
+    if any(keyword in normalized for keyword in ("문의처", "담당 기관", "전화번호", "문의")):
+        return "intent:contact"
+    if any(keyword in normalized for keyword in ("필요 서류", "제출 서류", "서류")):
+        return "intent:documents"
+    if any(keyword in normalized for keyword in ("언제까지", "마감", "기간")):
+        return "intent:deadline"
+    if any(keyword in normalized for keyword in ("자세히", "더 알려")):
+        return "intent:detail"
+    return normalized
 
 
 def _shorten(value: Any, limit: int) -> str:
