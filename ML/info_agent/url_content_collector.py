@@ -72,6 +72,72 @@ def clean_html_text(html: str, limit: int = 5000) -> tuple[str, str]:
     return title, "\n".join(lines)[:limit]
 
 
+def extract_bokjiro_embedded_text(html_text: str, limit: int = 5000) -> str:
+    if "dmWlfareInfo" not in html_text and "wlfareInfoId" not in html_text:
+        return ""
+    labels = {
+        "wlfareInfoNm": "제목",
+        "wlfareInfoOutlCn": "요약",
+        "wlfareSprtTrgtCn": "지원대상",
+        "wlfareSprtTrgtSlcrCn": "선정기준",
+        "wlfareSprtBnftCn": "지원내용",
+        "aplyMtdDc": "신청방법",
+        "aplyMtdDcdnm": "신청방법",
+        "rprsCtadr": "문의처",
+        "bizChrDeptNm": "담당부서",
+        "bizChrInstNm": "담당기관",
+    }
+    parts: list[str] = []
+    for key, label in labels.items():
+        match = re.search(rf'\\"{re.escape(key)}\\"\s*:\s*\\"(.*?)(?<!\\)\\"', html_text, flags=re.DOTALL)
+        if not match:
+            match = re.search(rf'"{re.escape(key)}"\s*:\s*"(.*?)(?<!\\)"', html_text, flags=re.DOTALL)
+        if not match:
+            continue
+        raw_value = match.group(1)
+        try:
+            value = json.loads(f'"{raw_value}"')
+        except json.JSONDecodeError:
+            value = raw_value
+        value = clean_html_fragment(value)
+        if value:
+            parts.append(f"{label}: {value}")
+
+    related_values = []
+    for name, value in re.findall(
+        r'\\"wlfareInfoReldNm\\"\s*:\s*\\"(.*?)(?<!\\)\\".*?'
+        r'\\"wlfareInfoReldCn\\"\s*:\s*\\"(.*?)(?<!\\)\\"',
+        html_text,
+        flags=re.DOTALL,
+    ):
+        try:
+            clean_name = clean_html_fragment(json.loads(f'"{name}"'))
+            clean_value = clean_html_fragment(json.loads(f'"{value}"'))
+        except json.JSONDecodeError:
+            clean_name = clean_html_fragment(name)
+            clean_value = clean_html_fragment(value)
+        if clean_name and clean_value:
+            related_values.append(f"{clean_name} {clean_value}")
+    if related_values:
+        parts.append("문의처: " + ", ".join(dict.fromkeys(related_values[:3])))
+    return "\n".join(dict.fromkeys(parts))[:limit]
+
+
+def clean_html_fragment(value: Any) -> str:
+    raw = str(value or "")
+    raw = (
+        raw.replace("\\u003c", "<")
+        .replace("\\u003C", "<")
+        .replace("\\u003e", ">")
+        .replace("\\u003E", ">")
+        .replace("\\u0026", "&")
+        .replace("\\n", " ")
+        .replace('\\"', '"')
+    )
+    text = BeautifulSoup(raw, "html.parser").get_text(" ", strip=True)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def skipped_record(doc_id: str, url: str, reason: str) -> dict[str, Any]:
     return {
         "docId": doc_id,
@@ -112,6 +178,9 @@ def collect_url(
         if "html" not in content_type and content_type:
             return skipped_record(doc_id, normalized_url, f"지원하지 않는 Content-Type: {content_type}")
         title, text = clean_html_text(response.text)
+        embedded_text = extract_bokjiro_embedded_text(response.text)
+        if embedded_text:
+            text = "\n".join(part for part in (embedded_text, text) if part)[:5000]
         if not text:
             raise ValueError("본문 텍스트 없음")
         return {

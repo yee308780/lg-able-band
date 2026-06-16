@@ -28,17 +28,23 @@ ID_FIELDS = ("servId", "svcId", "serviceId", "welfareInfoId", "id")
 SUMMARY_FIELDS = ("servDgst", "summary", "wlfareInfoOutlCn", "description")
 URL_FIELDS = ("servDtlLink", "link", "url")
 UPDATED_FIELDS = ("lastModYmd", "updatedAt", "dataStdDe", "referenceDate", "frstRegYmd")
-SUPPORT_FIELDS = ("supportTarget", "sportTrgetCn", "trgterIndvdlArray", "eligibility")
-SELECTION_FIELDS = ("selectionCriteria", "slctCritCn", "selectionCriterion")
+SUPPORT_FIELDS = (
+    "supportTarget", "sportTrgetCn", "trgterIndvdlArray", "eligibility",
+    "wlfareSprtTrgtCn",
+)
+SELECTION_FIELDS = (
+    "selectionCriteria", "slctCritCn", "selectionCriterion", "wlfareSprtTrgtSlcrCn",
+)
 APPLICATION_FIELDS = (
-    "applicationMethod", "applyMethod", "aplyMtdCn", "aplyMtdNm", "howToApply",
+    "applicationMethod", "applyMethod", "aplyMtdCn", "aplyMtdNm", "aplyMtdDc",
+    "aplyMtdDcdnm", "howToApply",
 )
 CONTACT_FIELDS = ("contact", "inqplCtadr", "rprsCtadr", "contactInfo", "phone")
 DEPARTMENT_FIELDS = ("department", "bizChrDeptNm", "agency", "organization")
 DETAIL_TEXT_FIELDS = (
     *SUMMARY_FIELDS, *SUPPORT_FIELDS, *SELECTION_FIELDS, *APPLICATION_FIELDS,
     *CONTACT_FIELDS, *DEPARTMENT_FIELDS, "content", "servCn", "supportContent",
-    "srvPvsnNm", "lifeArray", "intrsThemaArray",
+    "wlfareSprtBnftCn", "srvPvsnNm", "lifeArray", "intrsThemaArray",
 )
 APPLICATION_KEYWORDS = (
     "신청", "신청방법", "신청 방법", "접수", "방문", "온라인", "주민센터",

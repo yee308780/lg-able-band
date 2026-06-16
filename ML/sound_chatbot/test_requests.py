@@ -70,6 +70,7 @@ def sample_context():
             "tv": {"hasPopup": True, "popupMessage": "TV에 긴급 안내가 표시되어 있습니다."},
             "range": {"powerOn": True, "longOn": True},
             "doorSensor": {"doorOpen": False, "securityEvent": False},
+            "wearable": {"name": "LG Able Band", "connectionStatus": "CONNECTED", "batteryLevel": 82},
         },
     }
 
@@ -94,6 +95,7 @@ def main():
         ("air_quality", {"text": "공기질 괜찮아?", "context": context}, "AIR_QUALITY_CHECK"),
         ("range_power", {"text": "인덕션 켜져 있어?", "context": context}, "RANGE_POWER_CHECK"),
         ("door_open", {"text": "현관문 열려 있어?", "context": context}, "DOOR_OPEN_CHECK"),
+        ("wearable_status", {"text": "밴드 연결 상태 알려줘", "context": context}, "WEARABLE_STATUS_CHECK"),
         ("guardian", {"text": "보호자한테 알려줘", "user": {"guardianLinked": True}}, "NOTIFY_GUARDIAN"),
     ]
 

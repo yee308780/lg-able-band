@@ -27,6 +27,15 @@ public class ChatbotRouter {
 		"서류", "필요 서류", "기간", "언제까지", "마감", "자세히", "더 알려줘",
 		"지금 어떻게", "어떻게 해야", "안전 행동", "대처"
 	);
+	private static final List<String> APP_FEATURE_KEYWORDS = List.of(
+		"able band", "에이블 밴드", "밴드", "생활가전", "생활 소리", "주변 소리",
+		"진동 알림", "진동알림", "밴드 진동", "위험알림", "위험 알림",
+		"보호자 알림", "밴드 연결", "페어링", "블루투스", "접근성 설정"
+	);
+	private static final List<String> APP_FEATURE_HELP_KEYWORDS = List.of(
+		"어떻게", "어떡", "방법", "설정", "받아", "받지", "알려줘", "안 오", "안오",
+		"확인", "점검", "연결", "상태", "켜", "꺼"
+	);
 	private static final String INFO_UNAVAILABLE = "정보 안내 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.";
 	private static final String CHATBOT_UNAVAILABLE = "음성 챗봇 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.";
 
@@ -40,6 +49,15 @@ public class ChatbotRouter {
 
 	public Map<String, Object> route(Map<String, Object> request) {
 		String text = requestText(request);
+		if (isBandLiveStatusQuestion(text)) {
+			return this.soundChatbotClient.chat(request).orElseGet(() -> unavailable("SOUND_CHATBOT_UNAVAILABLE", CHATBOT_UNAVAILABLE));
+		}
+		if (isInfoAgentAppFeatureQuestion(text)) {
+			String accessibilityType = accessibilityType(request);
+			return this.infoAgentClient.query(text, accessibilityType, 5, infoAgentContext(request, text))
+				.map(this::toChatbotResponse)
+				.orElseGet(() -> unavailable("INFO_AGENT_UNAVAILABLE", INFO_UNAVAILABLE));
+		}
 		if (isSoundChatbotCommand(text)) {
 			return this.soundChatbotClient.chat(request).orElseGet(() -> unavailable("SOUND_CHATBOT_UNAVAILABLE", CHATBOT_UNAVAILABLE));
 		}
@@ -57,6 +75,12 @@ public class ChatbotRouter {
 
 	boolean shouldUseInfoAgent(String text) {
 		String normalized = text.toLowerCase(Locale.ROOT);
+		if (isBandLiveStatusQuestion(text)) {
+			return false;
+		}
+		if (isInfoAgentAppFeatureQuestion(text)) {
+			return true;
+		}
 		if (isSoundChatbotCommand(text)) {
 			return false;
 		}
@@ -101,6 +125,30 @@ public class ChatbotRouter {
 
 	private boolean isSoundChatbotCommand(String text) {
 		return containsAny(text.toLowerCase(Locale.ROOT), SOUND_CHATBOT_KEYWORDS);
+	}
+
+	private boolean isInfoAgentAppFeatureQuestion(String text) {
+		String normalized = text.toLowerCase(Locale.ROOT);
+		if (!containsAny(normalized, APP_FEATURE_KEYWORDS)) {
+			return false;
+		}
+		return containsAny(normalized, APP_FEATURE_HELP_KEYWORDS);
+	}
+
+	private boolean isBandLiveStatusQuestion(String text) {
+		String normalized = text.toLowerCase(Locale.ROOT);
+		boolean mentionsBand = normalized.contains("밴드")
+			|| normalized.contains("웨어러블")
+			|| normalized.contains("able band")
+			|| normalized.contains("에이블 밴드");
+		boolean asksLiveStatus = normalized.contains("연결 상태")
+			|| normalized.contains("상태 알려")
+			|| normalized.contains("상태 확인")
+			|| normalized.contains("연결됐")
+			|| normalized.contains("연결되")
+			|| normalized.contains("연결 끊")
+			|| normalized.contains("연결이");
+		return mentionsBand && asksLiveStatus;
 	}
 
 	private String lastInfoAgentTitle(Map<String, Object> request) {

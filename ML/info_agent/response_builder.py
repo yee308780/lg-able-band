@@ -7,6 +7,7 @@ from typing import Any
 
 try:
     from .important_field_extractor import infer_condition_fields
+    from .important_field_extractor import extract_important_fields
     from .llm_client import (
         build_cache_key,
         build_llm_prompt,
@@ -16,8 +17,10 @@ try:
         llm_config,
     )
     from .rag_retriever import search_documents
+    from .url_content_collector import DEFAULT_CACHE_PATH, cache_key, collect_url, load_cache, write_cache
 except ImportError:
     from important_field_extractor import infer_condition_fields
+    from important_field_extractor import extract_important_fields
     from llm_client import (
         build_cache_key,
         build_llm_prompt,
@@ -27,6 +30,7 @@ except ImportError:
         llm_config,
     )
     from rag_retriever import search_documents
+    from url_content_collector import DEFAULT_CACHE_PATH, cache_key, collect_url, load_cache, write_cache
 
 
 ACCESSIBILITY_TYPES = {
@@ -258,6 +262,75 @@ def safety_guide(query: str) -> dict[str, str] | None:
     )
 
 
+APP_FEATURE_GUIDES = (
+    {
+        "keywords": ("생활가전", "가전", "생활 소리", "주변 소리", "소리", "못 들어", "못 들으"),
+        "title": "생활 소리 알림",
+        "category": "수어/청각/시각 접근성",
+        "priority": "MEDIUM",
+        "summary": "Able Band는 생활가전 소리나 주변 알림을 앱 알림과 밴드 진동으로 전달해 청각 접근성을 돕습니다.",
+        "action": "앱에서 생활 소리 알림을 켜고, 알림 받을 소리와 진동 방식을 설정하세요.",
+    },
+    {
+        "keywords": ("위험 알림", "위험알림", "긴급 알림", "경고 알림", "위험을", "위험하면"),
+        "title": "위험 알림 안내",
+        "category": "재난/안전",
+        "priority": "HIGH",
+        "summary": "위험 알림은 앱 화면, 밴드 진동, 보호자 알림을 함께 사용해 놓치기 쉬운 상황을 빠르게 알려줍니다.",
+        "action": "앱에서 위험 알림과 보호자 알림을 켜고, 밴드 연결 상태와 진동 설정을 확인하세요.",
+    },
+    {
+        "keywords": (
+            "진동 알림", "진동알림", "진동이 안", "진동이안", "진동 안", "진동안",
+            "알림이 안", "알림이안", "알림 안", "알림안", "안 오면", "안오면", "밴드 진동",
+        ),
+        "title": "진동 알림 점검",
+        "category": "수어/청각/시각 접근성",
+        "priority": "MEDIUM",
+        "summary": "진동 알림이 오지 않으면 밴드 연결, 배터리, 앱 알림 권한, 진동 설정을 함께 확인해야 합니다.",
+        "action": "밴드가 연결되어 있는지 확인하고, 앱 알림 권한과 진동 알림 설정을 켠 뒤 배터리 상태를 확인하세요.",
+    },
+    {
+        "keywords": ("보호자 알림", "보호자에게", "보호자한테", "보호자 연락", "보호자 전송"),
+        "title": "보호자 알림 안내",
+        "category": "재난/안전",
+        "priority": "HIGH",
+        "summary": "보호자 알림은 위험 상황이나 도움이 필요한 상황을 보호자에게 전달하도록 돕는 기능입니다.",
+        "action": "앱에서 보호자 연락처를 등록하고, 위험 알림 또는 SOS 알림에서 보호자 알림을 켜세요.",
+    },
+    {
+        "keywords": ("페어링", "페어링 방법", "연결 방법", "블루투스 연결"),
+        "requiresAppName": True,
+        "title": "밴드 연결 방법",
+        "category": "수어/청각/시각 접근성",
+        "priority": "MEDIUM",
+        "summary": "Able Band는 앱의 기기 화면에서 블루투스로 연결하고, 연결 상태를 앱에서 확인할 수 있습니다.",
+        "action": "앱의 기기 화면에서 밴드 추가 또는 페어링을 선택하고, 블루투스와 밴드 전원을 켠 뒤 안내에 따라 연결하세요.",
+    },
+    {
+        "keywords": ("접근성", "시각장애", "청각장애", "큰 글씨", "음성 안내"),
+        "requiresAppName": True,
+        "title": "Able Band 접근성 안내",
+        "category": "수어/청각/시각 접근성",
+        "priority": "MEDIUM",
+        "summary": "Able Band는 앱 알림, 음성 안내, 큰 글씨 화면, 밴드 진동을 조합해 시각·청각 접근성을 보완합니다.",
+        "action": "앱의 접근성 설정에서 글씨 크기, 음성 안내, 진동 알림 방식을 사용자에게 맞게 조정하세요.",
+    },
+)
+
+
+def app_feature_guide(query: str) -> dict[str, str] | None:
+    normalized = str(query or "")
+    mentions_app = "Able Band" in normalized or "에이블 밴드" in normalized or "밴드" in normalized
+    for guide in APP_FEATURE_GUIDES:
+        keywords = guide["keywords"]
+        if guide.get("requiresAppName") and not mentions_app:
+            continue
+        if any(keyword in normalized for keyword in keywords):
+            return guide
+    return None
+
+
 def _is_broad_query(query: str) -> bool:
     normalized = re.sub(r"[?!.,]", "", " ".join(str(query or "").split())).strip()
     return normalized in BROAD_QUERY_PATTERNS
@@ -342,6 +415,8 @@ def should_use_llm(
         return False, "safety_rule"
     if classification.get("category") not in LLM_ELIGIBLE_CATEGORIES:
         return False, "ineligible_category"
+    if classification.get("category") == "재난/안전":
+        return False, "safety_template"
     if classification.get("priority") == "URGENT" and not _is_preparedness_query(query):
         return False, "safety_rule"
     if not results:
@@ -359,6 +434,8 @@ def should_use_llm(
     }.get(classify_followup_type(query) or "")
     if requested_field and not fields.get(requested_field):
         return False, "insufficient_fields"
+    if requested_field in {"applyMethod", "contact", "requiredDocuments", "applicationPeriod"}:
+        return False, "direct_field"
     try:
         top_score = float(results[0].get("finalScore", 0))
         minimum_score = float(os.getenv("INFO_AGENT_LLM_MIN_SCORE", "0.45"))
@@ -661,10 +738,16 @@ def _eligibility_answer(title: str, fields: dict[str, str]) -> str:
         fields.get("regionCondition"),
     ]
     hints: list[str] = []
+    generic_values = {
+        "지원대상의 내용을 참고해주시기 바랍니다.",
+        "지원대상의 내용을 참고해 주시기 바랍니다.",
+        "상단 지원대상 내용 참조",
+    }
     for value in candidates:
         if (
             not value
             or len(value) > 160
+            or value in generic_values
             or value in hints
             or any(value in existing for existing in hints)
         ):
@@ -814,6 +897,63 @@ def _field_value_for_followup(followup_type: str, fields: dict[str, str]) -> str
     return ""
 
 
+def _requested_field_present(followup_type: str | None, fields: dict[str, str]) -> bool:
+    if followup_type == "ELIGIBILITY":
+        return any(
+            fields.get(field)
+            for field in (
+                "eligibility", "applicationTarget", "supportTarget", "selectionCriteria",
+                "ageCondition", "incomeCondition", "regionCondition",
+            )
+        )
+    if followup_type:
+        return bool(_field_value_for_followup(followup_type, fields))
+    return not _missing_core_fields(fields)
+
+
+def _merge_fields(primary: dict[str, str], fallback: dict[str, str]) -> dict[str, str]:
+    merged = dict(primary)
+    for key, value in fallback.items():
+        if value and not merged.get(key):
+            merged[key] = value
+    return merged
+
+
+def _enrich_document_on_demand(
+    document: dict[str, Any] | None,
+    *,
+    followup_type: str | None = None,
+) -> dict[str, Any] | None:
+    if not isinstance(document, dict) or not document:
+        return document
+    fields = _important_fields(document)
+    if _requested_field_present(followup_type, fields):
+        return document
+    doc_id = str(document.get("docId") or document.get("title") or "")
+    url = str(document.get("url") or "").strip()
+    if not url or "example.com" in url:
+        return document
+    try:
+        cache = load_cache(DEFAULT_CACHE_PATH)
+        key = cache_key(doc_id, url)
+        cached = cache.get(key)
+        if not cached or cached.get("fetchStatus") != "SUCCESS":
+            cached = collect_url(doc_id, url)
+            cache[key] = cached
+            write_cache(cache.values(), DEFAULT_CACHE_PATH)
+        fetched_text = str(cached.get("text") or "") if cached.get("fetchStatus") == "SUCCESS" else ""
+        if not fetched_text:
+            return document
+        extracted = extract_important_fields(document, fetched_text)
+        merged_fields = _merge_fields(fields, extracted)
+        enriched = dict(document)
+        enriched["importantFields"] = merged_fields
+        enriched["importantFieldQuality"] = "ON_DEMAND"
+        return enriched
+    except Exception:
+        return document
+
+
 def _detail_answer(title: str, summary: str, fields: dict[str, str], source: str) -> str:
     parts = [f"{title}: {_safe_summary(summary)}"]
     target = fields.get("supportTarget") or fields.get("eligibility")
@@ -871,6 +1011,21 @@ def _last_info_card(context: dict[str, Any]) -> dict[str, Any] | None:
         if isinstance(card, dict) and card.get("title"):
             return card
     return None
+
+
+def _contextual_search_query(query: str, context: dict[str, Any]) -> str:
+    last_info_agent = _last_info_card(context)
+    followup_type = classify_followup_type(query)
+    if not isinstance(last_info_agent, dict) or followup_type is None:
+        return query.strip()
+    title = str(last_info_agent.get("title") or "").strip()
+    if not title:
+        return query.strip()
+    normalized_title = re.sub(r"\s+", "", title)
+    normalized_query = re.sub(r"\s+", "", query)
+    if normalized_title and normalized_title in normalized_query:
+        return query.strip()
+    return f"{title} {query.strip()}".strip()
 
 
 def build_field_priority_answer(
@@ -1036,7 +1191,80 @@ def build_info_response(
     if user_type not in ACCESSIBILITY_TYPES:
         user_type = "ALL"
 
-    rag_result = search_documents(query=query.strip(), top_k=top_k)
+    request_context = context if isinstance(context, dict) else {}
+    feature_guide = app_feature_guide(query)
+    if feature_guide:
+        classification = {
+            "category": feature_guide["category"],
+            "accessibilityTarget": user_type,
+            "priority": feature_guide["priority"],
+        }
+        feature_doc = {
+            "rank": 1,
+            "docId": f"ABLE-BAND-{feature_guide['title']}",
+            "title": feature_guide["title"],
+            "summary": feature_guide["summary"],
+            "source": "Able Band 앱 안내",
+            "url": "",
+            "category": feature_guide["category"],
+            "accessibilityTarget": user_type,
+            "priority": feature_guide["priority"],
+            "finalScore": 1.0,
+            "importantFields": {
+                "supportContent": feature_guide["summary"],
+                "applyMethod": feature_guide["action"],
+                "sourceAgency": "Able Band",
+            },
+        }
+        rag_result = {
+            "query": query.strip(),
+            "classification": classification,
+            "rawPrediction": classification,
+            "ruleApplied": True,
+            "results": [feature_doc],
+            "resultCount": 1,
+            "fallbackUsed": False,
+            "fallbackLevel": "app_feature",
+        }
+        app_card = {
+            "title": feature_guide["title"],
+            "summary": feature_guide["summary"],
+            "recommendedAction": feature_guide["action"],
+            "source": "Able Band 앱 안내",
+            "url": "",
+            "supportContent": feature_guide["summary"],
+            "applyMethod": feature_guide["action"],
+        }
+        response = {
+            "responseType": "INFO_CARD",
+            "intent": "INFO_AGENT_QUERY",
+            "action": "SHOW_INFO_CARD",
+            "answerText": f"{feature_guide['title']} 정보를 찾았어요.",
+            "voiceText": _truncate(f"{feature_guide['title']}입니다. {feature_guide['action']}", 180),
+            "infoCard": app_card,
+            "query": query.strip(),
+            "classification": classification,
+            "userAccessibilityType": user_type,
+            "appCard": app_card,
+            "followupAnswer": None,
+            "bandMessage": "",
+            "voiceMessage": _truncate(f"{feature_guide['title']}입니다. {feature_guide['action']}", 180),
+            "notificationTabMessage": "",
+            "recommendedChannels": ["APP", "BAND"],
+            "notifyGuardian": False,
+            "note": "",
+            "sourceDocuments": _source_documents([feature_doc]),
+            "rag": {
+                "resultCount": 1,
+                "fallbackUsed": False,
+                "fallbackLevel": "app_feature",
+            },
+        }
+        response["_llmMeta"] = _llm_meta(reason="app_feature")
+        return attach_quality_debug(response, rag_result, classification, [feature_doc])
+
+    search_query = _contextual_search_query(query, request_context)
+    rag_result = search_documents(query=search_query, top_k=top_k)
     classification = rag_result["classification"].copy()
     if _is_urgent_query(query):
         classification["priority"] = "URGENT"
@@ -1045,9 +1273,15 @@ def build_info_response(
     category = classification["category"]
     priority = classification["priority"]
     results = rag_result.get("results", [])
-    request_context = context if isinstance(context, dict) else {}
     last_info_agent = _last_info_card(request_context)
     followup_type = classify_followup_type(query)
+    if results:
+        enriched_representative = _enrich_document_on_demand(
+            results[0],
+            followup_type=followup_type,
+        )
+        if enriched_representative is not None and enriched_representative is not results[0]:
+            results = [enriched_representative, *results[1:]]
     is_followup = (
         isinstance(last_info_agent, dict)
         and bool(last_info_agent.get("title"))
@@ -1087,7 +1321,13 @@ def build_info_response(
                 "fallbackLevel": rag_result.get("fallbackLevel", "all"),
             },
         }
-        response["_llmMeta"] = _llm_meta(reason="followup_template")
+        response = build_llm_augmented_response(
+            response=response,
+            query=search_query,
+            user_type=user_type,
+            results=results,
+            rag_result=rag_result,
+        )
         return attach_quality_debug(
             response,
             rag_result,

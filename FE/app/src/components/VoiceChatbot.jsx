@@ -890,6 +890,7 @@ function createDeviceContext(devices) {
   const tv = findDevice(devices, 'TV')
   const range = findDevice(devices, 'RANGE')
   const doorSensor = findDevice(devices, 'DOOR_SENSOR')
+  const wearable = findDevice(devices, 'WEARABLE')
 
   return {
     washer: washer
@@ -930,6 +931,13 @@ function createDeviceContext(devices) {
       ? {
           doorOpen: readDeviceValue(doorSensor, 'doorOpen'),
           securityEvent: readDeviceValue(doorSensor, 'securityEvent') || isWarningDevice(doorSensor),
+        }
+      : null,
+    wearable: wearable
+      ? {
+          name: wearable.name,
+          connectionStatus: normalizeDeviceStatus(wearable),
+          batteryLevel: readDeviceValue(wearable, 'batteryLevel'),
         }
       : null,
   }

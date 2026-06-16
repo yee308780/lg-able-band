@@ -154,6 +154,22 @@ def build_response(request: ChatRequest, match: IntentMatch) -> ChatResponse:
                 "현관문 상태 정보가 없어요.",
             )
         action = "READ_DEVICE_STATUS"
+    elif intent == "WEARABLE_STATUS_CHECK":
+        wearable = devices.wearable
+        name = (wearable.name if wearable else None) or "밴드"
+        status = (wearable.connectionStatus if wearable else None) or ""
+        normalized_status = status.upper()
+        if normalized_status == "CONNECTED":
+            answer = f"{name}는 현재 연결되어 있어요."
+        elif normalized_status == "DISCONNECTED":
+            answer = f"{name} 연결이 끊겨 있어요. 블루투스와 밴드 전원을 확인해 주세요."
+        elif normalized_status in {"WARNING", "ERROR"}:
+            answer = f"{name} 연결 상태에 확인이 필요해요. 앱의 기기 화면에서 상태를 확인해 주세요."
+        elif status:
+            answer = f"{name} 연결 상태는 {status}입니다."
+        else:
+            answer = "밴드 연결 상태 정보가 없어요. 앱의 기기 화면에서 확인해 주세요."
+        action = "READ_DEVICE_STATUS"
     elif intent == "DEVICE_STATUS_CHECK":
         answer = "어떤 상태를 확인할지 조금 더 구체적으로 말해 주세요. 예를 들면 세탁기 상태, 냉장고 문, 공기질처럼 말할 수 있어요."
         action = "ASK_CLARIFY"
