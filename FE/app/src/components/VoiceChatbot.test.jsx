@@ -1,7 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
-import { VoiceChatbot } from './VoiceChatbot'
+import { VoiceChatbot, shouldOpenChatbot } from './VoiceChatbot'
+import { shouldCloseChatbot } from '../utils/chatbotWake'
 
 describe('VoiceChatbot info agent response', () => {
   beforeEach(() => {
@@ -247,6 +248,183 @@ describe('VoiceChatbot info agent response', () => {
     })
   })
 
+  it('starts appliance location guidance when asking where a connected appliance is', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <VoiceChatbot
+        preview={{
+          devices: [
+            {
+              deviceId: 1,
+              name: '세탁기',
+              type: 'WASHER',
+              typeLabel: '세탁기',
+              room: '세탁실',
+              connectionStatus: 'CONNECTED',
+            },
+          ],
+          uwb: {
+            targetName: '세탁기',
+            distanceM: 2.4,
+            vibrationPattern: '짧은 진동',
+            voiceGuide: '세탁기까지 약 2.4미터입니다.',
+          },
+        }}
+        session={{}}
+        summary={{}}
+      />,
+    )
+    await openTalkMode(user)
+    await user.type(screen.getByLabelText('인식된 문장'), '세탁기 위치 알려줘')
+    await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
+
+    expect(await screen.findByText('세탁기 위치 안내를 시작할게요. 웨어러블 진동과 음성 안내를 함께 사용할까요?')).toBeTruthy()
+  })
+
+  it('adds an appliance through a voice-style confirmation flow', async () => {
+    const user = userEvent.setup()
+    globalThis.fetch.mockImplementation(async (url, options = {}) => {
+      if (String(url).endsWith('/api/devices') && !options.method) {
+        return jsonResponse({
+          items: [
+            { deviceId: 1, name: '세탁기', type: 'WASHER', connectionStatus: 'CONNECTED' },
+          ],
+        })
+      }
+
+      if (String(url).endsWith('/api/devices') && options.method === 'POST') {
+        return jsonResponse({
+          deviceId: 22,
+          name: 'TV',
+          type: 'TV',
+          connectionStatus: 'CONNECTED',
+        })
+      }
+
+      return jsonResponse({})
+    })
+
+    render(<VoiceChatbot preview={{ devices: [] }} session={{}} summary={{}} />)
+    await openTalkMode(user)
+    await user.type(screen.getByLabelText('인식된 문장'), '가전 추가하고 싶어')
+    await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
+    expect(await screen.findByText(/현재 추가 가능한 가전은/)).toBeTruthy()
+
+    await user.type(screen.getByLabelText('인식된 문장'), 'TV')
+    await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
+    expect(await screen.findByText('TV를 추가할게요. 가전 이름은 TV로 저장할까요?')).toBeTruthy()
+
+    await user.type(screen.getByLabelText('인식된 문장'), '응')
+    await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
+    expect(await screen.findByText('TV라는 이름으로 저장할게요. vendorDeviceId는 thinq-tv-001로 확인되었습니다. 위치 안내 사용을 켤까요?')).toBeTruthy()
+
+    await user.type(screen.getByLabelText('인식된 문장'), '켜줘')
+    await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
+    expect(await screen.findByText('원격 제어 사용도 켤까요?')).toBeTruthy()
+
+    await user.type(screen.getByLabelText('인식된 문장'), '응')
+    await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
+    expect(await screen.findByText('TV를 추가했습니다. 위치 안내를 켰고, 원격 제어를 켰습니다.')).toBeTruthy()
+
+    const createCall = globalThis.fetch.mock.calls.find(([url, options]) => (
+      String(url).endsWith('/api/devices') && options?.method === 'POST'
+    ))
+    expect(JSON.parse(createCall[1].body)).toEqual(expect.objectContaining({
+      name: 'TV',
+      type: 'TV',
+      vendorDeviceId: 'thinq-tv-001',
+      locationSupported: true,
+      remoteEnabled: true,
+    }))
+  })
+
+  it('guides appliance location through a multi-turn voice flow', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <VoiceChatbot
+        preview={{
+          devices: [
+            {
+              deviceId: 2,
+              name: 'TV',
+              type: 'TV',
+              typeLabel: 'TV',
+              room: '거실',
+              connectionStatus: 'CONNECTED',
+            },
+          ],
+          uwb: {
+            targetName: 'TV',
+            targetDeviceType: 'TV',
+            distanceM: 2,
+            direction: '앞쪽',
+          },
+        }}
+        session={{}}
+        summary={{}}
+      />,
+    )
+    await openTalkMode(user)
+    await user.type(screen.getByLabelText('인식된 문장'), 'TV 어디 있어?')
+    await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
+    expect(await screen.findByText('TV 위치 안내를 시작할게요. 웨어러블 진동과 음성 안내를 함께 사용할까요?')).toBeTruthy()
+
+    await user.type(screen.getByLabelText('인식된 문장'), '응')
+    await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
+    expect(await screen.findByText('웨어러블 진동과 음성 안내를 함께 사용할게요. TV까지의 거리를 확인하고 있습니다. 현재 약 2미터 앞쪽에 있습니다. 천천히 앞으로 이동해주세요.')).toBeTruthy()
+
+    await user.type(screen.getByLabelText('인식된 문장'), '계속 알려줘')
+    await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
+    expect(await screen.findByText('TV와 가까워지고 있습니다. 현재 약 1미터입니다. 오른쪽으로 조금 이동해주세요.')).toBeTruthy()
+
+    await user.type(screen.getByLabelText('인식된 문장'), '이제?')
+    await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
+    expect(await screen.findByText('TV가 매우 가깝습니다. 약 40센티미터 앞에 있습니다. 손을 뻗기 전에 주변을 확인해주세요.')).toBeTruthy()
+
+    await user.type(screen.getByLabelText('인식된 문장'), '위치 안내 멈춰')
+    await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
+    expect(await screen.findByText('위치 안내를 종료했습니다.')).toBeTruthy()
+  })
+
+  it('keeps the blind-friendly washer location script when wearable guidance is accepted', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <VoiceChatbot
+        preview={{
+          devices: [
+            {
+              deviceId: 3,
+              name: '세탁기',
+              type: 'WASHER',
+              typeLabel: '세탁기',
+              room: '세탁실',
+              connectionStatus: 'CONNECTED',
+            },
+          ],
+          uwb: {
+            targetName: '세탁기',
+            targetDeviceType: 'WASHER',
+            distanceM: 2.4,
+            direction: '앞쪽',
+          },
+        }}
+        session={{}}
+        summary={{}}
+      />,
+    )
+    await openTalkMode(user)
+    await user.type(screen.getByLabelText('인식된 문장'), '세탁기 위치 알려줘')
+    await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
+    expect(await screen.findByText('세탁기 위치 안내를 시작할게요. 웨어러블 진동과 음성 안내를 함께 사용할까요?')).toBeTruthy()
+
+    await user.type(screen.getByLabelText('인식된 문장'), '사용해줘')
+    await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
+    expect(await screen.findByText('웨어러블 진동과 음성 안내를 함께 사용할게요. 세탁기까지의 거리를 확인하고 있습니다. 현재 약 2.4미터 앞쪽에 있습니다. 천천히 앞으로 이동해주세요.')).toBeTruthy()
+  })
+
   it('keeps previous user and bot messages when a new question is sent', async () => {
     const user = userEvent.setup()
     mockVoiceChatResponses(
@@ -316,6 +494,27 @@ describe('VoiceChatbot info agent response', () => {
     expect(screen.getByLabelText('인식된 문장').value).toBe('')
     expect(window.speechSynthesis.cancel).toHaveBeenCalled()
   })
+
+  it('recognizes natural wake phrases for opening the chatbot by voice', () => {
+    expect(shouldOpenChatbot('챗봇 켜줘')).toBe(true)
+    expect(shouldOpenChatbot('AI 음성 인식 해줘')).toBe(true)
+    expect(shouldOpenChatbot('에이아이 음성인식 켜줘')).toBe(true)
+    expect(shouldOpenChatbot('지금 음성 챗봇 열어줘')).toBe(true)
+    expect(shouldOpenChatbot('ㅏㅇㄴ 켜줘')).toBe(true)
+    expect(shouldOpenChatbot('켜줘')).toBe(true)
+    expect(shouldOpenChatbot('오늘 날씨 알려줘')).toBe(false)
+  })
+
+  it('recognizes natural close phrases for closing the chatbot by voice', () => {
+    expect(shouldCloseChatbot('챗봇 꺼줘')).toBe(true)
+    expect(shouldCloseChatbot('챗봇 꺼')).toBe(true)
+    expect(shouldCloseChatbot('채팅봇 종료해줘')).toBe(true)
+    expect(shouldCloseChatbot('쳇 봇 껴줘')).toBe(true)
+    expect(shouldCloseChatbot('최 복 꺼줘')).toBe(true)
+    expect(shouldCloseChatbot('그만')).toBe(true)
+    expect(shouldCloseChatbot('꺼줘')).toBe(true)
+    expect(shouldCloseChatbot('세탁기 꺼줘')).toBe(false)
+  })
 })
 
 async function openTalkMode(user) {
@@ -329,10 +528,18 @@ function mockVoiceChatResponse(data) {
 
 function mockVoiceChatResponses(...responses) {
   for (const data of responses) {
-    globalThis.fetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => data,
-    })
+    globalThis.fetch.mockResolvedValueOnce(jsonResponse(data))
+  }
+}
+
+function jsonResponse(data) {
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers({
+      'Content-Type': 'application/json',
+    }),
+    json: async () => data,
   }
 }
 

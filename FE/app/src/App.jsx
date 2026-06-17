@@ -5,6 +5,8 @@ import { HomeScreen } from './components/HomeScreen'
 import { LoginScreen } from './components/LoginScreen'
 import { SignupScreen } from './components/SignupScreen'
 import { getStoredSession, login, logout, signup } from './services/authService'
+import { startChatbotWakeService, stopChatbotWakeService } from './services/chatbotWakeService'
+import { unlockTurnCueAudio } from './services/turnCueAudioService'
 import { AUTHENTICATION_EXPIRED_EVENT } from './services/apiClient'
 import {
   getDefaultAccessibilitySettings,
@@ -59,6 +61,7 @@ function App() {
 
   useLayoutEffect(() => {
     function handleAuthenticationExpired() {
+      stopChatbotWakeService()
       logout()
       setSession(null)
       setScreen('login')
@@ -76,6 +79,12 @@ function App() {
     }
   }, [])
 
+  useLayoutEffect(() => {
+    if (session?.role === 'USER') {
+      startChatbotWakeService()
+    }
+  }, [session])
+
   async function handleLoginSubmit(event) {
     event.preventDefault()
 
@@ -89,6 +98,11 @@ function App() {
     }
 
     setLoginState({ submitting: true, error: '', message: '' })
+    if (loginForm.role === 'USER') {
+      primeSpeechSynthesisForMobile()
+      unlockTurnCueAudio()
+      startChatbotWakeService()
+    }
 
     try {
       const nextSession = await login(loginForm)
@@ -152,6 +166,7 @@ function App() {
   }
 
   function handleLogout() {
+    stopChatbotWakeService()
     logout()
     setSession(null)
     setScreen('login')
@@ -200,6 +215,19 @@ function App() {
       onSubmit={handleLoginSubmit}
     />
   )
+}
+
+function primeSpeechSynthesisForMobile() {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    return
+  }
+
+  try {
+    window.speechSynthesis.resume?.()
+    window.speechSynthesis.getVoices?.()
+  } catch {
+    // Some mobile browsers reject warm-up speech; regular chatbot speech still retries later.
+  }
 }
 
 function validateSignup(form) {

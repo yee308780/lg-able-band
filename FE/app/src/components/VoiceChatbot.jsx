@@ -2,22 +2,94 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChatbotFeatureSelect } from './ChatbotFeatureSelect'
 import { SpeakForMeScreen } from './SpeakForMeScreen'
 import { CHATBOT_QUESTION_CATEGORIES, FALLBACK_CHAT_ALERTS } from '../data/chatbotRecommendations'
+import { createDevice, getDevices } from '../services/deviceService'
+import { createEmergencyRequest } from '../services/emergencyService'
+import { linkGuardianByEmail } from '../services/guardianService'
+import {
+  startChatbotWakeService,
+  stopChatbotWakeService,
+  subscribeChatbotWake,
+} from '../services/chatbotWakeService'
+import { playGreetingAudio, playTurnCueTone } from '../services/turnCueAudioService'
 import { requestVoiceChat } from '../services/voiceChatbotService'
+import { normalizeSpeechText, shouldCloseChatbot, shouldOpenChatbot } from '../utils/chatbotWake'
+
+export { shouldOpenChatbot } from '../utils/chatbotWake'
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
 
-const closeKeywords = ['챗봇 꺼줘', '챗봇 종료', '종료해줘', '그만할래', '그만해', '닫아줘']
-const wakeKeywords = [
-  '챗봇켜줘',
-  '챗봇열어줘',
-  '챗봇시작',
-  '채팅봇켜줘',
-  '음성챗봇켜줘',
-  '음성챗봇열어줘',
-  '에이블밴드',
-  'ableband',
-  'ai켜줘',
-  '에이아이켜줘',
+const locationGuideSteps = [
+  {
+    distanceText: '약 2미터',
+    directionText: '앞쪽',
+    guideText: '천천히 앞으로 이동해주세요.',
+  },
+  {
+    distanceText: '약 1미터',
+    directionText: '',
+    guideText: '오른쪽으로 조금 이동해주세요.',
+  },
+  {
+    distanceText: '약 40센티미터',
+    directionText: '앞',
+    guideText: '손을 뻗기 전에 주변을 확인해주세요.',
+  },
+]
+const deviceVoiceCatalog = [
+  {
+    aliases: ['세탁기', '빨래'],
+    defaultName: '세탁기',
+    defaultVendorDeviceId: 'thinq-washer-001',
+    locationSupported: true,
+    remoteEnabled: true,
+    type: 'WASHER',
+    typeLabel: '세탁기',
+  },
+  {
+    aliases: ['티비', 'tv', '텔레비전'],
+    defaultName: 'TV',
+    defaultVendorDeviceId: 'thinq-tv-001',
+    locationSupported: false,
+    remoteEnabled: true,
+    type: 'TV',
+    typeLabel: 'TV',
+  },
+  {
+    aliases: ['전기레인지', '안전 전기레인지', '인덕션', '가스레인지'],
+    defaultName: '안전 전기레인지',
+    defaultVendorDeviceId: 'thinq-range-001',
+    locationSupported: false,
+    remoteEnabled: false,
+    type: 'RANGE',
+    typeLabel: '전기레인지',
+  },
+  {
+    aliases: ['도어센서', '도어 센서', '문 센서', '현관문 센서'],
+    defaultName: '도어센서',
+    defaultVendorDeviceId: 'thinq-door-001',
+    locationSupported: false,
+    remoteEnabled: false,
+    type: 'DOOR_SENSOR',
+    typeLabel: '도어센서',
+  },
+  {
+    aliases: ['공기질 센서', '공기 센서', '공기청정 센서'],
+    defaultName: 'LG 공기질 센서',
+    defaultVendorDeviceId: 'thinq-air-001',
+    locationSupported: true,
+    remoteEnabled: false,
+    type: 'AIR_SENSOR',
+    typeLabel: '공기질 센서',
+  },
+  {
+    aliases: ['냉장고', '냉장실'],
+    defaultName: '냉장고',
+    defaultVendorDeviceId: 'thinq-fridge-001',
+    locationSupported: false,
+    remoteEnabled: true,
+    type: 'REFRIGERATOR',
+    typeLabel: '냉장고',
+  },
 ]
 
 export function VoiceChatbot({
@@ -41,6 +113,7 @@ export function VoiceChatbot({
   const [isRequesting, setIsRequesting] = useState(false)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [selectedQuestionCategoryId, setSelectedQuestionCategoryId] = useState(initialQuestionCategoryId)
+  const [turnCueEnabled, setTurnCueEnabled] = useState(true)
   const recognitionRef = useRef(null)
   const wakeRecognitionRef = useRef(null)
   const latestTranscriptRef = useRef('')
@@ -49,6 +122,7 @@ export function VoiceChatbot({
   const manualStopRef = useRef(false)
   const isOpenRef = useRef(false)
   const wakeListeningRef = useRef(false)
+  const wakeRestartTimeoutRef = useRef(null)
   const recognitionStartingRef = useRef(false)
   const recognitionListeningRef = useRef(false)
   const recognitionStartTimeoutRef = useRef(null)
@@ -56,6 +130,9 @@ export function VoiceChatbot({
   const requestInFlightRef = useRef(false)
   const lastInfoAgentRef = useRef(null)
   const chatResetVersionRef = useRef(0)
+  const greetingTimeoutRef = useRef(null)
+  const speechEndTimeoutRef = useRef(null)
+  const appFlowRef = useRef(null)
 
   const supportsSpeechRecognition = Boolean(SpeechRecognition)
   const chatbotContext = useMemo(() => createChatbotContext(summary, preview), [preview, summary])
@@ -83,10 +160,42 @@ export function VoiceChatbot({
 
     return () => {
       wakeListeningRef.current = false
+      window.clearTimeout(wakeRestartTimeoutRef.current)
+      window.clearTimeout(greetingTimeoutRef.current)
       window.clearTimeout(recognitionStartTimeoutRef.current)
+      window.clearTimeout(speechEndTimeoutRef.current)
       wakeRecognitionRef.current?.stop()
       recognitionRef.current?.stop()
       window.speechSynthesis?.cancel()
+    }
+  }, [embedded])
+
+  useEffect(() => {
+    if (embedded) {
+      return undefined
+    }
+
+    const unsubscribeWake = subscribeChatbotWake(() => {
+      if (!isOpenRef.current) {
+        openChatbot({ fromWake: true })
+      }
+    })
+
+    function restartWakeListening() {
+      if (!isOpenRef.current) {
+        scheduleWakeListening(120)
+      }
+    }
+
+    document.addEventListener('visibilitychange', restartWakeListening)
+    window.addEventListener('focus', restartWakeListening)
+    window.addEventListener('pageshow', restartWakeListening)
+
+    return () => {
+      unsubscribeWake()
+      document.removeEventListener('visibilitychange', restartWakeListening)
+      window.removeEventListener('focus', restartWakeListening)
+      window.removeEventListener('pageshow', restartWakeListening)
     }
   }, [embedded])
 
@@ -107,7 +216,7 @@ export function VoiceChatbot({
     setStatus('대기 중')
   }
 
-  function openChatbot() {
+  function openChatbot(options = {}) {
     isOpenRef.current = true
     stopWakeListening()
     conversationActiveRef.current = true
@@ -117,9 +226,15 @@ export function VoiceChatbot({
     setIsOpen(true)
     setError('')
     setStatus('안내 중...')
-    speak('무엇을 확인할까요? 말씀해주세요.', () => {
-      startListening()
-    })
+    window.clearTimeout(greetingTimeoutRef.current)
+    const greetingDelayMs = options.fromWake ? 850 : 250
+    greetingTimeoutRef.current = window.setTimeout(() => {
+      if (!conversationActiveRef.current || manualStopRef.current) {
+        return
+      }
+
+      speakGreetingAndCueUserTurn()
+    }, greetingDelayMs)
   }
 
   function closeChatbot() {
@@ -129,6 +244,8 @@ export function VoiceChatbot({
     recognitionStartingRef.current = false
     recognitionListeningRef.current = false
     window.clearTimeout(recognitionStartTimeoutRef.current)
+    window.clearTimeout(greetingTimeoutRef.current)
+    window.clearTimeout(speechEndTimeoutRef.current)
     window.speechSynthesis?.cancel()
     recognitionRef.current?.stop()
     setIsListening(false)
@@ -150,6 +267,8 @@ export function VoiceChatbot({
     recognitionStartingRef.current = false
     recognitionListeningRef.current = false
     window.clearTimeout(recognitionStartTimeoutRef.current)
+    window.clearTimeout(greetingTimeoutRef.current)
+    window.clearTimeout(speechEndTimeoutRef.current)
     window.speechSynthesis?.cancel()
     recognitionRef.current?.stop()
     setIsListening(false)
@@ -169,7 +288,10 @@ export function VoiceChatbot({
     latestTranscriptRef.current = ''
     sentTranscriptRef.current = ''
     lastInfoAgentRef.current = null
+    appFlowRef.current = null
     window.clearTimeout(recognitionStartTimeoutRef.current)
+    window.clearTimeout(greetingTimeoutRef.current)
+    window.clearTimeout(speechEndTimeoutRef.current)
     window.speechSynthesis?.cancel()
     recognitionRef.current?.stop()
 
@@ -196,7 +318,7 @@ export function VoiceChatbot({
 
     const recognition = new SpeechRecognition()
     recognition.lang = 'ko-KR'
-    recognition.interimResults = false
+    recognition.interimResults = true
     recognition.continuous = false
 
     recognition.onresult = (event) => {
@@ -205,17 +327,18 @@ export function VoiceChatbot({
         .join('')
 
       if (shouldOpenChatbot(transcript)) {
+        wakeListeningRef.current = false
+        recognition.abort?.()
         openChatbot()
+        return
       }
     }
 
-    recognition.onerror = () => {
+    recognition.onerror = (event) => {
       wakeListeningRef.current = false
 
-      if (!isOpenRef.current) {
-        window.setTimeout(() => {
-          startWakeListening()
-        }, 900)
+      if (!isOpenRef.current && !['not-allowed', 'service-not-allowed'].includes(event.error)) {
+        scheduleWakeListening(700)
       }
     }
 
@@ -223,9 +346,7 @@ export function VoiceChatbot({
       wakeListeningRef.current = false
 
       if (!isOpenRef.current) {
-        window.setTimeout(() => {
-          startWakeListening()
-        }, 450)
+        scheduleWakeListening(300)
       }
     }
 
@@ -234,27 +355,26 @@ export function VoiceChatbot({
   }
 
   function startWakeListening() {
-    if (!SpeechRecognition || isOpenRef.current || wakeListeningRef.current) {
+    if (isOpenRef.current) {
       return
     }
 
-    const recognition = ensureWakeRecognition()
-    if (!recognition) {
-      return
-    }
+    startChatbotWakeService()
+  }
 
-    try {
-      wakeListeningRef.current = true
-      recognition.start()
-    } catch {
-      wakeListeningRef.current = false
-    }
+  function scheduleWakeListening(delayMs) {
+    window.clearTimeout(wakeRestartTimeoutRef.current)
+    wakeRestartTimeoutRef.current = window.setTimeout(() => {
+      startWakeListening()
+    }, delayMs)
   }
 
   function stopWakeListening() {
     const wasListening = wakeListeningRef.current
     wakeListeningRef.current = false
-    wakeRecognitionRef.current?.stop()
+    window.clearTimeout(wakeRestartTimeoutRef.current)
+    stopChatbotWakeService()
+    wakeRecognitionRef.current?.abort?.()
     return wasListening
   }
 
@@ -407,6 +527,456 @@ export function VoiceChatbot({
     setStatus('일시 정지')
   }
 
+  async function handleAppVoiceCommand(text, displayText, continueConversation) {
+    const flow = appFlowRef.current
+    if (flow) {
+      return continueAppFlow(flow, text, displayText, continueConversation)
+    }
+
+    if (isDeviceAddCommand(text)) {
+      return startDeviceAddFlow(text, displayText, continueConversation)
+    }
+
+    if (isLocationGuideCommand(text)) {
+      return startLocationGuideFlow(text, displayText, continueConversation)
+    }
+
+    if (isGuardianConnectCommand(text)) {
+      appFlowRef.current = { type: 'guardianConnect', step: 'email' }
+      respondWithLocalAssistant(
+        displayText,
+        '보호자를 연결할게요. 보호자 이메일을 말씀해 주세요.',
+        continueConversation,
+      )
+      return true
+    }
+
+    if (isWearablePairingCommand(text)) {
+      appFlowRef.current = { type: 'wearablePairing', step: 'ready' }
+      respondWithLocalAssistant(
+        displayText,
+        '웨어러블 연동을 도와드릴게요. 밴드 화면에 QR 코드가 보이면 준비됐다고 말씀해 주세요.',
+        continueConversation,
+      )
+      return true
+    }
+
+    if (isTurnCueCommand(text)) {
+      return handleTurnCueCommand(text, displayText, continueConversation)
+    }
+
+    if (isEmergencyCommand(text)) {
+      return handleEmergencyVoiceCommand(displayText, continueConversation)
+    }
+
+    if (isAppFeatureListCommand(text)) {
+      respondWithLocalAssistant(displayText, appFeatureListText(), continueConversation)
+      return true
+    }
+
+    return false
+  }
+
+  async function handleEmergencyVoiceCommand(displayText, continueConversation) {
+    setIsRequesting(true)
+    try {
+      const request = await createEmergencyRequest()
+      const message = request?.guardianNotified
+        ? '긴급 요청을 보냈고 보호자에게도 알렸습니다.'
+        : request?.message || '긴급 요청을 보냈습니다.'
+      respondWithLocalAssistant(displayText, message, continueConversation)
+      return true
+    } catch (error) {
+      respondWithLocalAssistant(displayText, error.message || '긴급 요청 전송에 실패했습니다. 잠시 후 다시 시도해 주세요.', continueConversation)
+      return true
+    } finally {
+      setIsRequesting(false)
+    }
+  }
+
+  async function continueAppFlow(flow, text, displayText, continueConversation) {
+    if (flow.type === 'deviceAdd') {
+      return continueDeviceAddFlow(flow, text, displayText, continueConversation)
+    }
+
+    if (flow.type === 'locationGuide') {
+      return continueLocationGuideFlow(flow, text, displayText, continueConversation)
+    }
+
+    if (flow.type === 'guardianConnect') {
+      return continueGuardianConnectFlow(flow, text, displayText, continueConversation)
+    }
+
+    if (flow.type === 'wearablePairing') {
+      return continueWearablePairingFlow(flow, text, displayText, continueConversation)
+    }
+
+    if (flow.type === 'turnCue') {
+      appFlowRef.current = null
+      setTurnCueEnabled(isAffirmative(text))
+      respondWithLocalAssistant(
+        displayText,
+        isAffirmative(text)
+          ? '챗봇 알림음을 켰습니다. 답변이 끝나면 딩 소리로 말할 차례를 알려드릴게요.'
+          : '챗봇 알림음을 껐습니다. 다음부터는 음성 안내만 사용할게요.',
+        continueConversation,
+      )
+      return true
+    }
+
+    appFlowRef.current = null
+    return false
+  }
+
+  async function startLocationGuideFlow(text, displayText, continueConversation) {
+    const target = findLocationTargetDevice(text, preview?.devices || [], preview?.uwb)
+    if (!target) {
+      respondWithLocalAssistant(displayText, '어떤 가전의 위치를 안내할까요? 예를 들면 TV 어디 있어, 세탁기 위치 안내해줘처럼 말해 주세요.', continueConversation)
+      return true
+    }
+
+    appFlowRef.current = {
+      type: 'locationGuide',
+      step: 'confirmMode',
+      target,
+      progressIndex: 0,
+      useWearable: false,
+    }
+    respondWithLocalAssistant(displayText, `${target.name} 위치 안내를 시작할게요. 웨어러블 진동과 음성 안내를 함께 사용할까요?`, continueConversation)
+    return true
+  }
+
+  async function continueLocationGuideFlow(flow, text, displayText, continueConversation) {
+    if (isCancelCommand(text) || isLocationStopCommand(text)) {
+      appFlowRef.current = null
+      respondWithLocalAssistant(displayText, '위치 안내를 종료했습니다.', continueConversation)
+      return true
+    }
+
+    if (flow.step === 'confirmMode') {
+      const nextFlow = {
+        ...flow,
+        step: 'guiding',
+        useWearable: isAffirmative(text),
+        progressIndex: 0,
+      }
+      appFlowRef.current = nextFlow
+      respondWithLocalAssistant(displayText, locationGuideMessage(nextFlow), continueConversation)
+      return true
+    }
+
+    if (flow.step === 'guiding') {
+      const nextIndex = Math.min(flow.progressIndex + 1, locationGuideSteps.length - 1)
+      const nextFlow = {
+        ...flow,
+        progressIndex: nextIndex,
+      }
+      appFlowRef.current = nextFlow
+      respondWithLocalAssistant(displayText, locationGuideMessage(nextFlow), continueConversation)
+      return true
+    }
+
+    return true
+  }
+
+  async function startDeviceAddFlow(text, displayText, continueConversation) {
+    setIsRequesting(true)
+    try {
+      const connectedDevices = await loadVoiceDevices(preview?.devices)
+      const connectedTypes = new Set(connectedDevices.map((device) => device.type))
+      const availableDevices = deviceVoiceCatalog.filter((device) => !connectedTypes.has(device.type))
+      const selectedDevice = findVoiceDevice(text)
+
+      if (availableDevices.length === 0) {
+        appFlowRef.current = null
+        respondWithLocalAssistant(displayText, '현재 추가 가능한 가전이 없습니다. 모든 지원 가전이 이미 연결되어 있어요.', continueConversation)
+        return true
+      }
+
+      if (!selectedDevice) {
+        appFlowRef.current = {
+          type: 'deviceAdd',
+          step: 'select',
+          availableDevices,
+          connectedTypes: [...connectedTypes],
+        }
+        const availableNames = availableDevices.map((device) => device.typeLabel).join(', ')
+        const connectedNames = deviceVoiceCatalog
+          .filter((device) => connectedTypes.has(device.type))
+          .map((device) => `${device.typeLabel}는 이미 연결되어 있습니다`)
+          .join('. ')
+        respondWithLocalAssistant(
+          displayText,
+          `추가 가능한 가전을 찾고 있습니다. 현재 추가 가능한 가전은 ${availableNames}입니다. ${connectedNames ? `${connectedNames}. ` : ''}어떤 가전을 추가할까요?`,
+          continueConversation,
+        )
+        return true
+      }
+
+      if (connectedTypes.has(selectedDevice.type)) {
+        respondWithLocalAssistant(displayText, `${selectedDevice.typeLabel}는 이미 연결되어 있습니다. 다른 가전을 추가할까요?`, continueConversation)
+        return true
+      }
+
+      appFlowRef.current = {
+        type: 'deviceAdd',
+        step: 'name',
+        device: selectedDevice,
+        draft: createDeviceDraft(selectedDevice),
+      }
+      respondWithLocalAssistant(
+        displayText,
+        `${selectedDevice.typeLabel}를 추가할게요. 가전 이름은 ${selectedDevice.defaultName}로 저장할까요?`,
+        continueConversation,
+      )
+      return true
+    } finally {
+      setIsRequesting(false)
+    }
+  }
+
+  async function continueDeviceAddFlow(flow, text, displayText, continueConversation) {
+    if (isCancelCommand(text)) {
+      appFlowRef.current = null
+      respondWithLocalAssistant(displayText, '가전 추가를 취소했습니다.', continueConversation)
+      return true
+    }
+
+    if (flow.step === 'select') {
+      const selectedDevice = findVoiceDevice(text)
+      if (!selectedDevice || !flow.availableDevices.some((device) => device.type === selectedDevice.type)) {
+        respondWithLocalAssistant(displayText, '추가할 가전을 다시 말씀해 주세요. 예를 들면 TV, 도어센서, 냉장고처럼 말할 수 있어요.', continueConversation)
+        return true
+      }
+
+      appFlowRef.current = {
+        ...flow,
+        step: 'name',
+        device: selectedDevice,
+        draft: createDeviceDraft(selectedDevice),
+      }
+      respondWithLocalAssistant(displayText, `${selectedDevice.typeLabel}를 추가할게요. 가전 이름은 ${selectedDevice.defaultName}로 저장할까요?`, continueConversation)
+      return true
+    }
+
+    if (flow.step === 'name') {
+      const nextName = isAffirmative(text) ? flow.device.defaultName : cleanSpokenName(text) || flow.device.defaultName
+      const nextFlow = {
+        ...flow,
+        step: 'location',
+        draft: {
+          ...flow.draft,
+          name: nextName,
+        },
+      }
+      appFlowRef.current = nextFlow
+      respondWithLocalAssistant(displayText, `${nextName}라는 이름으로 저장할게요. vendorDeviceId는 ${nextFlow.draft.vendorDeviceId}로 확인되었습니다. 위치 안내 사용을 켤까요?`, continueConversation)
+      return true
+    }
+
+    if (flow.step === 'location') {
+      const nextFlow = {
+        ...flow,
+        step: flow.device.type === 'DOOR_SENSOR' ? 'doorAlert' : 'remote',
+        draft: {
+          ...flow.draft,
+          locationSupported: isAffirmative(text),
+        },
+      }
+      appFlowRef.current = nextFlow
+      respondWithLocalAssistant(
+        displayText,
+        flow.device.type === 'DOOR_SENSOR' ? '문 열림 알림을 받을까요?' : '원격 제어 사용도 켤까요?',
+        continueConversation,
+      )
+      return true
+    }
+
+    if (flow.step === 'doorAlert') {
+      return finishDeviceAddFlow({
+        ...flow,
+        draft: {
+          ...flow.draft,
+          remoteEnabled: false,
+          doorAlertEnabled: isAffirmative(text),
+        },
+      }, displayText, continueConversation)
+    }
+
+    if (flow.step === 'remote') {
+      return finishDeviceAddFlow({
+        ...flow,
+        draft: {
+          ...flow.draft,
+          remoteEnabled: isAffirmative(text),
+        },
+      }, displayText, continueConversation)
+    }
+
+    return true
+  }
+
+  async function finishDeviceAddFlow(flow, displayText, continueConversation) {
+    setIsRequesting(true)
+    try {
+      const savedDevice = await createDevice({
+        vendor: 'LG_THINQ',
+        vendorDeviceId: flow.draft.vendorDeviceId,
+        name: flow.draft.name,
+        type: flow.draft.type,
+        locationSupported: flow.draft.locationSupported,
+        remoteEnabled: flow.draft.remoteEnabled,
+      })
+      const name = savedDevice?.name || flow.draft.name
+      appFlowRef.current = null
+      const locationText = flow.draft.locationSupported ? '위치 안내를 켰고' : '위치 안내는 꺼져 있고'
+      const remoteText = flow.device.type === 'DOOR_SENSOR'
+        ? flow.draft.doorAlertEnabled ? '문 열림 알림을 켰습니다' : '문 열림 알림은 꺼져 있습니다'
+        : flow.draft.remoteEnabled ? '원격 제어를 켰습니다' : '원격 제어는 꺼져 있습니다'
+      respondWithLocalAssistant(displayText, `${name}를 추가했습니다. ${locationText}, ${remoteText}.`, continueConversation)
+      return true
+    } catch (error) {
+      appFlowRef.current = null
+      respondWithLocalAssistant(displayText, error.message || '가전 추가에 실패했습니다. 잠시 후 다시 시도해 주세요.', continueConversation)
+      return true
+    } finally {
+      setIsRequesting(false)
+    }
+  }
+
+  async function continueGuardianConnectFlow(flow, text, displayText, continueConversation) {
+    if (isCancelCommand(text)) {
+      appFlowRef.current = null
+      respondWithLocalAssistant(displayText, '보호자 연결을 취소했습니다.', continueConversation)
+      return true
+    }
+
+    if (flow.step === 'email') {
+      const email = extractEmail(text)
+      if (!email) {
+        respondWithLocalAssistant(displayText, '이메일을 잘 듣지 못했어요. 예를 들면 guardian@example.com처럼 다시 말씀해 주세요.', continueConversation)
+        return true
+      }
+
+      appFlowRef.current = {
+        ...flow,
+        step: 'primary',
+        email,
+      }
+      respondWithLocalAssistant(displayText, `${email} 보호자를 연결할게요. 대표 보호자로 설정할까요?`, continueConversation)
+      return true
+    }
+
+    if (flow.step === 'primary') {
+      appFlowRef.current = {
+        ...flow,
+        step: 'notify',
+        isPrimary: isAffirmative(text),
+      }
+      respondWithLocalAssistant(displayText, '위험 알림을 이 보호자에게 보낼까요?', continueConversation)
+      return true
+    }
+
+    if (flow.step === 'notify') {
+      setIsRequesting(true)
+      try {
+        const guardian = await linkGuardianByEmail({
+          email: flow.email,
+          isPrimary: flow.isPrimary,
+          notifyOnDanger: isAffirmative(text),
+        })
+        appFlowRef.current = null
+        respondWithLocalAssistant(displayText, `${guardian?.name || '보호자'} 연결을 완료했습니다. 위험 알림 설정도 저장했습니다.`, continueConversation)
+        return true
+      } catch (error) {
+        appFlowRef.current = null
+        respondWithLocalAssistant(displayText, error.message || '보호자 연결에 실패했습니다. 이메일을 확인하고 다시 시도해 주세요.', continueConversation)
+        return true
+      } finally {
+        setIsRequesting(false)
+      }
+    }
+
+    return true
+  }
+
+  async function continueWearablePairingFlow(flow, text, displayText, continueConversation) {
+    if (isCancelCommand(text)) {
+      appFlowRef.current = null
+      respondWithLocalAssistant(displayText, '웨어러블 연동을 취소했습니다.', continueConversation)
+      return true
+    }
+
+    if (flow.step === 'ready') {
+      appFlowRef.current = {
+        ...flow,
+        step: 'scan',
+      }
+      respondWithLocalAssistant(
+        displayText,
+        '좋아요. 앱의 메뉴에서 웨어러블 연동 화면을 열고, 밴드 QR 코드를 카메라에 맞춰 주세요. QR 인식이 끝나면 연동 완료라고 말해 주세요.',
+        continueConversation,
+      )
+      return true
+    }
+
+    if (flow.step === 'scan') {
+      appFlowRef.current = null
+      respondWithLocalAssistant(displayText, '웨어러블 연동 안내를 마쳤습니다. QR 인식 후 밴드가 연결되면 앱의 기기 화면에서 상태를 확인할 수 있어요.', continueConversation)
+      return true
+    }
+
+    return true
+  }
+
+  function handleTurnCueCommand(text, displayText, continueConversation) {
+    if (text.includes('꺼') || text.includes('끄')) {
+      setTurnCueEnabled(false)
+      respondWithLocalAssistant(displayText, '챗봇 알림음을 껐습니다. 다음부터는 음성 안내만 사용할게요.', continueConversation)
+      return true
+    }
+
+    if (text.includes('켜') || text.includes('추가') || text.includes('사용')) {
+      setTurnCueEnabled(true)
+      respondWithLocalAssistant(displayText, '챗봇 알림음을 켰습니다. 답변이 끝나면 딩 소리로 말할 차례를 알려드릴게요.', continueConversation)
+      return true
+    }
+
+    appFlowRef.current = { type: 'turnCue', step: 'confirm' }
+    respondWithLocalAssistant(displayText, '챗봇 알림음을 켤까요?', continueConversation)
+    return true
+  }
+
+  function respondWithLocalAssistant(userText, assistantText, continueConversation) {
+    const visibleUserText = userText.trim()
+    setInputText('')
+    setError('')
+    setMessages((previousMessages) => [
+      ...previousMessages,
+      ...(visibleUserText ? [createChatMessage('user', visibleUserText)] : []),
+      createChatMessage('bot', assistantText, {
+        data: {
+          answerText: assistantText,
+          voiceText: assistantText,
+          intent: 'APP_VOICE_FLOW',
+          action: 'LOCAL_APP_ACTION',
+        },
+      }),
+    ])
+    setStatus('응답 중...')
+    cueAssistantTurn()
+    if (continueConversation) {
+      speakAndCueUserTurn(assistantText, () => {
+        setStatus('응답 완료')
+      })
+      return
+    }
+
+    speak(assistantText, () => {
+      setStatus('응답 완료')
+    })
+  }
+
   async function sendMessage(
     text = inputText,
     continueConversation = conversationActiveRef.current,
@@ -421,9 +991,7 @@ export function VoiceChatbot({
     if (!trimmedText) {
       setError('먼저 문장을 말하거나 입력해 주세요.')
       if (continueConversation) {
-        speak('잘 못 들었어요. 다시 말씀해주세요.', () => {
-          startListening()
-        })
+        speakAndCueUserTurn('잘 못 들었어요. 다시 말씀해주세요.')
       }
       return
     }
@@ -432,8 +1000,14 @@ export function VoiceChatbot({
       setInputText(trimmedText)
       setStatus('대화 종료 중...')
       speak('음성 챗봇을 종료할게요.', () => {
-        closeChatbot()
+        playTurnCue('user', { force: true }).finally(() => {
+          closeChatbot()
+        })
       })
+      return
+    }
+
+    if (await handleAppVoiceCommand(trimmedText, visibleText, continueConversation)) {
       return
     }
 
@@ -515,9 +1089,16 @@ export function VoiceChatbot({
           : message
       )))
       setStatus('응답 중...')
-      speak(enrichedData.voiceText || enrichedData.answerText, () => {
-        setStatus('응답 완료')
-      })
+      cueAssistantTurn()
+      if (continueConversation) {
+        speakAndCueUserTurn(enrichedData.voiceText || enrichedData.answerText, () => {
+          setStatus('응답 완료')
+        })
+      } else {
+        speak(enrichedData.voiceText || enrichedData.answerText, () => {
+          setStatus('응답 완료')
+        })
+      }
     } catch (requestError) {
       await waitForMinimumDuration(requestStartedAt, 350)
       if (requestResetVersion !== chatResetVersionRef.current) {
@@ -539,7 +1120,7 @@ export function VoiceChatbot({
       setStatus('연결 실패')
 
       if (continueConversation) {
-        speak('연결에 실패했어요. 잠시 후 다시 시도해 주세요.')
+        speakAndCueUserTurn('연결에 실패했어요. 잠시 후 다시 시도해 주세요.')
       }
     } finally {
       if (requestResetVersion === chatResetVersionRef.current) {
@@ -559,22 +1140,106 @@ export function VoiceChatbot({
     sendMessage(trimmedText)
   }
 
+  function cueAssistantTurn() {
+    playTurnCue('assistant')
+  }
+
+  function speakAndCueUserTurn(text, afterSpeech) {
+    speak(text, () => {
+      afterSpeech?.()
+      cueUserTurnAndListen()
+    })
+  }
+
+  function speakGreetingAndCueUserTurn() {
+    playGreetingAudio().then((played) => {
+      if (played) {
+        cueUserTurnAndListen()
+        return
+      }
+
+      speakAndCueUserTurn('무엇을 도와드릴까요')
+    })
+  }
+
+  function replayAndCueUserTurn(text) {
+    if (!text) {
+      return
+    }
+
+    conversationActiveRef.current = true
+    manualStopRef.current = false
+    speakAndCueUserTurn(text)
+  }
+
+  function cueUserTurnAndListen() {
+    if (!conversationActiveRef.current || manualStopRef.current) {
+      return
+    }
+
+    setStatus('말씀해 주세요')
+    window.setTimeout(() => {
+      playTurnCue('user', { force: true }).finally(() => {
+        if (conversationActiveRef.current && !manualStopRef.current) {
+          startListening()
+        }
+      })
+    }, 220)
+  }
+
+  async function playTurnCue(kind, options = {}) {
+    if (!turnCueEnabled && !options.force) {
+      return true
+    }
+
+    return playTurnCueTone(kind)
+  }
+
   function speak(text, onEnd) {
     if (!text || !('speechSynthesis' in window)) {
       onEnd?.()
       return
     }
 
-    window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = 'ko-KR'
-    utterance.onend = () => {
-      onEnd?.()
+    window.clearTimeout(speechEndTimeoutRef.current)
+    const hadActiveSpeech = Boolean(window.speechSynthesis.speaking || window.speechSynthesis.pending)
+    window.speechSynthesis.resume?.()
+    if (!hadActiveSpeech) {
+      speakWithRetry(text, onEnd, 0)
+      return
     }
-    utterance.onerror = () => {
+
+    window.setTimeout(() => {
+      window.speechSynthesis.resume?.()
+      speakWithRetry(text, onEnd, 0)
+    }, 80)
+  }
+
+  function speakWithRetry(text, onEnd, retryCount) {
+    const utterance = createKoreanUtterance(text)
+    const handleEnd = callOnce(() => {
+      window.clearTimeout(speechEndTimeoutRef.current)
       onEnd?.()
-    }
+    })
+    const handleError = callOnce(() => {
+      window.clearTimeout(speechEndTimeoutRef.current)
+      if (retryCount < 2) {
+        window.setTimeout(() => {
+          window.speechSynthesis?.resume?.()
+          speakWithRetry(text, onEnd, retryCount + 1)
+        }, 250)
+        return
+      }
+
+      onEnd?.()
+    })
+
+    utterance.onend = handleEnd
+    utterance.onerror = handleError
     window.speechSynthesis.speak(utterance)
+    window.speechSynthesis.resume?.()
+    const fallbackMs = Math.min(Math.max(text.length * 350, 4500), 30000)
+    speechEndTimeoutRef.current = window.setTimeout(handleEnd, fallbackMs)
   }
 
   return (
@@ -757,7 +1422,7 @@ export function VoiceChatbot({
                       {message.role === 'bot' && !message.hideInfoCard && shouldRenderInfoCard(message.data) ? (
                         <InfoAgentCard
                           response={message.data}
-                          onReplay={() => speak(message.data.voiceText || message.data.answerText)}
+                          onReplay={() => replayAndCueUserTurn(message.data.voiceText || message.data.answerText)}
                         />
                       ) : null}
 
@@ -765,7 +1430,7 @@ export function VoiceChatbot({
                         <>
                           <ChatAlertCards data={message.data} context={chatbotContext} />
                           <MessageReplayAction
-                            onReplay={() => speak(message.data?.voiceText || message.text)}
+                            onReplay={() => replayAndCueUserTurn(message.data?.voiceText || message.text)}
                           />
                         </>
                       ) : null}
@@ -1037,6 +1702,220 @@ function createChatMessage(role, text, extra = {}) {
   }
 }
 
+function createKoreanUtterance(text) {
+  const utterance = new SpeechSynthesisUtterance(text)
+  utterance.lang = 'ko-KR'
+  utterance.rate = 0.95
+  utterance.pitch = 1
+  utterance.volume = 1
+
+  const voices = window.speechSynthesis?.getVoices?.() || []
+  const koreanVoice = voices.find((voice) => voice.lang?.toLowerCase() === 'ko-kr') ||
+    voices.find((voice) => voice.lang?.toLowerCase().startsWith('ko')) ||
+    voices.find((voice) => /korean|한국|ko-kr/i.test(`${voice.name} ${voice.lang}`))
+
+  if (koreanVoice) {
+    utterance.voice = koreanVoice
+  }
+
+  return utterance
+}
+
+function isDeviceAddCommand(text) {
+  const normalized = normalizeSpeechText(text)
+  return (
+    (normalized.includes('가전') || normalized.includes('기기') || findVoiceDevice(text)) &&
+    ['추가', '연결', '등록'].some((keyword) => normalized.includes(keyword))
+  )
+}
+
+function isGuardianConnectCommand(text) {
+  const normalized = normalizeSpeechText(text)
+  return normalized.includes('보호자') && ['연결', '등록', '추가'].some((keyword) => normalized.includes(keyword))
+}
+
+function isLocationGuideCommand(text) {
+  const normalized = normalizeSpeechText(text)
+  if (isLocationStopCommand(text)) {
+    return false
+  }
+  const asksLocation = ['위치', '어디', '찾아', '거리'].some((keyword) => normalized.includes(keyword))
+  const mentionsDevice = Boolean(findVoiceDevice(text)) ||
+    ['가전', '기기', 'tv', '티비', '세탁기', '냉장고', '도어센서', '전기레인지'].some((keyword) => normalized.includes(normalizeSpeechText(keyword)))
+  return asksLocation && mentionsDevice
+}
+
+function isLocationStopCommand(text) {
+  const normalized = normalizeSpeechText(text)
+  return normalized.includes('위치안내') && ['멈춰', '중지', '종료', '그만', '꺼'].some((keyword) => normalized.includes(keyword))
+}
+
+function isWearablePairingCommand(text) {
+  const normalized = normalizeSpeechText(text)
+  return ['웨어러블', '밴드', '에이블밴드'].some((keyword) => normalized.includes(keyword)) &&
+    ['연동', '페어링', '연결'].some((keyword) => normalized.includes(keyword))
+}
+
+function isTurnCueCommand(text) {
+  const normalized = normalizeSpeechText(text)
+  return ['알림음', '딩소리', '효과음', '소리'].some((keyword) => normalized.includes(keyword)) &&
+    ['추가', '설정', '켜', '꺼', '사용'].some((keyword) => normalized.includes(keyword))
+}
+
+function isEmergencyCommand(text) {
+  const normalized = normalizeSpeechText(text)
+  return ['sos', '긴급', '응급', '도움요청', '살려줘'].some((keyword) => normalized.includes(keyword)) &&
+    ['요청', '보내', '알려', '호출', '해줘', '연락'].some((keyword) => normalized.includes(keyword))
+}
+
+function isAppFeatureListCommand(text) {
+  const normalized = normalizeSpeechText(text)
+  return normalized.includes('챗봇') && normalized.includes('뭐') && normalized.includes('할수')
+}
+
+function isCancelCommand(text) {
+  const normalized = normalizeSpeechText(text)
+  return ['취소', '그만', '안할래', '중지'].some((keyword) => normalized.includes(keyword))
+}
+
+function isAffirmative(text) {
+  const normalized = normalizeSpeechText(text)
+  if (['아니', '안돼', '꺼줘', '끄기', '싫어', '하지마'].some((keyword) => normalized.includes(keyword))) {
+    return false
+  }
+  return ['응', '네', '그래', '좋아', '맞아', '켜줘', '해줘', '예', 'yes', 'ㅇ'].some((keyword) => normalized.includes(keyword))
+}
+
+function findVoiceDevice(text) {
+  const normalized = normalizeSpeechText(text)
+  return deviceVoiceCatalog.find((device) => (
+    device.aliases.some((alias) => normalized.includes(normalizeSpeechText(alias))) ||
+    normalized.includes(normalizeSpeechText(device.typeLabel))
+  )) || null
+}
+
+function findLocationTargetDevice(text, devices, uwb) {
+  const requestedDevice = findVoiceDevice(text)
+  if (requestedDevice) {
+    const connectedDevice = devices.find((device) => device.type === requestedDevice.type)
+    return {
+      name: connectedDevice?.name || requestedDevice.defaultName,
+      type: requestedDevice.type,
+      room: connectedDevice?.room || requestedDevice.room || '',
+      uwbDistanceM: sameText(uwb?.targetName, connectedDevice?.name || requestedDevice.defaultName)
+        ? uwb?.distanceM
+        : null,
+      uwbDirection: sameText(uwb?.targetName, connectedDevice?.name || requestedDevice.defaultName)
+        ? uwb?.direction
+        : '',
+    }
+  }
+
+  if (uwb?.targetName) {
+    return {
+      name: uwb.targetName,
+      type: uwb.targetDeviceType || '',
+      room: uwb.room || '',
+      uwbDistanceM: uwb.distanceM,
+      uwbDirection: uwb.direction || '',
+    }
+  }
+
+  const locationDevice = devices.find((device) => device.locationSupported) || devices[0]
+  return locationDevice
+    ? {
+        name: locationDevice.name,
+        type: locationDevice.type,
+        room: locationDevice.room || '',
+        uwbDistanceM: null,
+        uwbDirection: '',
+      }
+    : null
+}
+
+function locationGuideMessage(flow) {
+  const step = locationGuideSteps[flow.progressIndex] || locationGuideSteps.at(-1)
+  const wearableText = flow.useWearable ? '웨어러블 진동과 음성 안내를 함께 사용할게요. ' : ''
+
+  if (flow.progressIndex === 0) {
+    const distanceText = formatGuideDistance(flow.target.uwbDistanceM) || step.distanceText
+    const directionText = flow.target.uwbDirection || step.directionText
+    return `${wearableText}${flow.target.name}까지의 거리를 확인하고 있습니다. 현재 ${distanceText}${directionText ? ` ${directionText}에 있습니다` : '입니다'}. ${step.guideText}`
+  }
+
+  if (flow.progressIndex === 1) {
+    return `${flow.target.name}와 가까워지고 있습니다. 현재 ${step.distanceText}입니다. ${step.guideText}`
+  }
+
+  return `${flow.target.name}가 매우 가깝습니다. ${step.distanceText} ${step.directionText}에 있습니다. ${step.guideText}`
+}
+
+function formatGuideDistance(distanceM) {
+  const distance = Number(distanceM)
+  if (!Number.isFinite(distance)) {
+    return ''
+  }
+  if (distance < 1) {
+    return `약 ${Math.round(distance * 100)}센티미터`
+  }
+  return Number.isInteger(distance) ? `약 ${distance}미터` : `약 ${distance.toFixed(1)}미터`
+}
+
+function createDeviceDraft(device) {
+  return {
+    vendorDeviceId: device.defaultVendorDeviceId,
+    name: device.defaultName,
+    type: device.type,
+    locationSupported: device.locationSupported,
+    remoteEnabled: device.remoteEnabled,
+  }
+}
+
+function cleanSpokenName(text) {
+  return text
+    .replace(/(으로|로)?\s*(해줘|해주세요|저장해줘|저장|할게|해|응|네|예)/g, '')
+    .replace(/[.?!]/g, '')
+    .trim()
+}
+
+function extractEmail(text) {
+  const normalized = text
+    .replace(/\s+/g, '')
+    .replace(/골뱅이|앳|엣/g, '@')
+    .replace(/닷|점/g, '.')
+    .replace(/지메일/g, 'gmail')
+    .replace(/네이버/g, 'naver')
+  return normalized.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || ''
+}
+
+async function loadVoiceDevices(fallbackDevices = []) {
+  try {
+    return await getDevices()
+  } catch {
+    return fallbackDevices
+  }
+}
+
+function appFeatureListText() {
+  return [
+    '챗봇으로 할 수 있는 기능은 다음과 같습니다.',
+    '가전 추가와 연결, 보호자 이메일 연결, 웨어러블 연동 안내, 챗봇 알림음 켜고 끄기, 긴급 요청 보내기, 알림 확인, 위험 알림 확인, 최근 알림 다시 듣기, 세탁기 남은 시간 확인, 냉장고 문 상태 확인, 공기질 확인, 전기레인지 상태 확인, 도어센서 상태 확인, UWB 가전 위치 확인, 복지와 접근성 정보 검색을 할 수 있어요.',
+  ].join(' ')
+}
+
+function callOnce(callback) {
+  let called = false
+
+  return (...args) => {
+    if (called) {
+      return
+    }
+
+    called = true
+    callback(...args)
+  }
+}
+
 function shouldRenderAlertCards(data) {
   const requestText = data?.requestText || ''
   const alertIntent = ['ALERT_LIST', 'UNREAD_ALERTS_CHECK', 'DANGER_ALERTS_CHECK', 'READ_RECENT_ALERT', 'REPEAT_LAST_ALERT']
@@ -1129,19 +2008,6 @@ function formatChatAlertTime(value) {
   return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`
 }
 
-function shouldCloseChatbot(text) {
-  return closeKeywords.some((keyword) => text.includes(keyword))
-}
-
-function shouldOpenChatbot(text) {
-  const normalizedText = normalizeSpeechText(text)
-  return wakeKeywords.some((keyword) => normalizedText.includes(normalizeSpeechText(keyword)))
-}
-
-function normalizeSpeechText(text) {
-  return text.toLowerCase().replace(/\s+/g, '')
-}
-
 function compactStatusLabel(status, isRequesting, isListening) {
   if (isListening) return '듣는 중'
   if (isRequesting) return '답변 정리 중'
@@ -1217,6 +2083,29 @@ function createChatbotContext(summary, preview) {
     recentAlert,
     lastSpokenAlert: recentAlert,
     devices: createDeviceContext(devices),
+    uwb: createUwbContext(preview?.uwb, devices),
+  }
+}
+
+function createUwbContext(uwb, devices) {
+  if (!uwb) {
+    return null
+  }
+
+  const targetDevice = devices.find((device) => (
+    sameText(device.name, uwb.targetName) ||
+    sameText(device.typeLabel, uwb.targetName) ||
+    sameText(device.type, uwb.targetDeviceType)
+  ))
+
+  return {
+    targetName: uwb.targetName || targetDevice?.name || '',
+    targetDeviceType: uwb.targetDeviceType || targetDevice?.type || '',
+    room: uwb.room || targetDevice?.room || targetDevice?.locationName || '',
+    distanceM: uwb.distanceM,
+    direction: uwb.direction || '',
+    vibrationPattern: uwb.vibrationPattern || '',
+    voiceGuide: uwb.voiceGuide || '',
   }
 }
 
@@ -1282,6 +2171,14 @@ function createDeviceContext(devices) {
 
 function findDevice(devices, type) {
   return devices.find((device) => device.type === type)
+}
+
+function sameText(first, second) {
+  if (!first || !second) {
+    return false
+  }
+
+  return String(first).trim().toLowerCase() === String(second).trim().toLowerCase()
 }
 
 function readDeviceValue(device, key) {

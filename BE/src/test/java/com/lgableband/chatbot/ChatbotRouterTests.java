@@ -19,6 +19,8 @@ class ChatbotRouterTests {
 		"최근 알림 읽어줘",
 		"세탁기 몇 분 남았어?",
 		"냉장고 문 열려 있어?",
+		"UWB 연결된 가전 위치 알려줘",
+		"세탁기 어디 있어?",
 		"보호자에게 연락해줘"
 	})
 	void keepsExistingCommandsOnSoundChatbot(String question) throws Exception {
@@ -118,6 +120,16 @@ class ChatbotRouterTests {
 	void routesBandConnectionStatusToSoundChatbotBecauseItIsLiveState() throws Exception {
 		try (Servers servers = Servers.start()) {
 			servers.router().route(request("밴드 연결 상태 알려줘", "HEARING"));
+
+			assertThat(servers.soundRequests()).isEqualTo(1);
+			assertThat(servers.infoRequests()).isZero();
+		}
+	}
+
+	@Test
+	void routesUwbLocationQuestionsToSoundChatbotBecauseTheyAreLiveState() throws Exception {
+		try (Servers servers = Servers.start()) {
+			servers.router().route(request("UWB 연결된 가전 위치 알려줘", "VISUAL"));
 
 			assertThat(servers.soundRequests()).isEqualTo(1);
 			assertThat(servers.infoRequests()).isZero();

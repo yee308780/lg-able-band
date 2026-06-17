@@ -12,6 +12,7 @@ public class ChatbotRouter {
 	private static final List<String> SOUND_CHATBOT_KEYWORDS = List.of(
 		"알림", "최근 알림", "미확인 알림", "위험 알림", "다시 읽어줘", "방금 알림",
 		"세탁기", "냉장고", "공기질", "tv", "티비", "전기레인지", "인덕션", "가스레인지",
+		"uwb", "유더블유비", "가전 위치", "기기 위치", "위치 알려", "어디 있어", "찾아줘",
 		"문 열려", "현관문", "보호자 연락", "보호자에게 연락", "보호자에게 알려줘", "보호자한테 알려줘",
 		"sos", "도움 요청"
 	);
@@ -49,6 +50,9 @@ public class ChatbotRouter {
 
 	public Map<String, Object> route(Map<String, Object> request) {
 		String text = requestText(request);
+		if (isUwbLocationQuestion(text)) {
+			return this.soundChatbotClient.chat(request).orElseGet(() -> unavailable("SOUND_CHATBOT_UNAVAILABLE", CHATBOT_UNAVAILABLE));
+		}
 		if (isBandLiveStatusQuestion(text)) {
 			return this.soundChatbotClient.chat(request).orElseGet(() -> unavailable("SOUND_CHATBOT_UNAVAILABLE", CHATBOT_UNAVAILABLE));
 		}
@@ -75,6 +79,9 @@ public class ChatbotRouter {
 
 	boolean shouldUseInfoAgent(String text) {
 		String normalized = text.toLowerCase(Locale.ROOT);
+		if (isUwbLocationQuestion(text)) {
+			return false;
+		}
 		if (isBandLiveStatusQuestion(text)) {
 			return false;
 		}
@@ -125,6 +132,29 @@ public class ChatbotRouter {
 
 	private boolean isSoundChatbotCommand(String text) {
 		return containsAny(text.toLowerCase(Locale.ROOT), SOUND_CHATBOT_KEYWORDS);
+	}
+
+	private boolean isUwbLocationQuestion(String text) {
+		String normalized = text.toLowerCase(Locale.ROOT);
+		boolean mentionsLocation = normalized.contains("위치")
+			|| normalized.contains("어디")
+			|| normalized.contains("찾아")
+			|| normalized.contains("거리")
+			|| normalized.contains("몇 미터")
+			|| normalized.contains("몇미터");
+		boolean mentionsUwbOrDevice = normalized.contains("uwb")
+			|| normalized.contains("유더블유비")
+			|| normalized.contains("가전")
+			|| normalized.contains("기기")
+			|| normalized.contains("세탁기")
+			|| normalized.contains("냉장고")
+			|| normalized.contains("공기질")
+			|| normalized.contains("전기레인지")
+			|| normalized.contains("인덕션")
+			|| normalized.contains("가스레인지")
+			|| normalized.contains("tv")
+			|| normalized.contains("티비");
+		return mentionsLocation && mentionsUwbOrDevice;
 	}
 
 	private boolean isInfoAgentAppFeatureQuestion(String text) {
