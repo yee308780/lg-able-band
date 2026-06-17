@@ -627,6 +627,7 @@ button:disabled {
 }
 
 .alert-card-message {
+  margin-top: 3px;
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -1310,8 +1311,8 @@ button:disabled {
 
 .device-inline-add-button.active {
   border-color: #d1d5db;
-  background: #ffffff;
-  color: #111827;
+  background: #f3f4f6;
+  color: #374151;
 }
 
 .summary-action-button {
@@ -1723,7 +1724,7 @@ button:disabled {
 
 .wearable-pairing-card {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto;
   width: 100%;
   align-items: center;
   gap: 12px;
@@ -5510,6 +5511,10 @@ h2 {
   font-weight: 500 !important;
 }
 
+.phone-screen .settings-logout-button {
+  font-weight: 420 !important;
+}
+
 .phone-screen .card-label,
 .phone-screen .eyebrow,
 .phone-screen .header-summary,
@@ -7405,9 +7410,16 @@ h2 {
   gap: 3px;
 }
 
+.home-loading-message::before {
+  content: '';
+  display: inline-flex;
+  width: 16px;
+  flex: 0 0 16px;
+}
+
 .home-loading-dots {
   display: inline-flex;
-  min-width: 18px;
+  min-width: 16px;
   justify-content: space-between;
 }
 
@@ -7471,30 +7483,44 @@ h2 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-left: 6px;
+  margin-left: 2px;
   font-size: 0.98rem;
   line-height: 1;
+  position: relative;
+  top: 1px;
 }
 
 .phone-screen .home-safety-card .status-card-header > div,
 .phone-screen .emergency-card > div,
+.phone-screen .device-connected-card .section-title-row > div,
 .phone-screen .device-summary-card .section-title-row > div,
 .phone-screen .alert-summary-card .section-title-row > div,
 .phone-screen .uwb-card-header > div {
   display: grid;
-  gap: 7px;
+  gap: 3px;
+}
+
+.phone-screen .device-manager-header > div:first-child {
+  display: grid;
+  gap: 6px;
+}
+
+.phone-screen .device-manager-header {
+  margin-bottom: 12px;
 }
 
 .phone-screen .home-safety-card {
-  gap: 9px !important;
+  gap: 4px !important;
 }
 
 .phone-screen .home-safety-card .status-card-header > div > .card-label,
 .phone-screen .emergency-card > div > .card-label,
+.phone-screen .device-connected-card .section-title-row > div > .card-label,
 .phone-screen .device-summary-card .section-title-row > div > .card-label,
 .phone-screen .alert-summary-card .section-title-row > div > .card-label,
-.phone-screen .uwb-card-header > div > .card-label {
-  margin-bottom: 0 !important;
+.phone-screen .uwb-card-header > div > .card-label,
+.phone-screen .device-manager-topline .card-label {
+  margin-bottom: 2px !important;
 }
 
 .phone-screen .home-safety-card .card-title,
@@ -7502,7 +7528,7 @@ h2 {
 .phone-screen .emergency-card .card-title,
 .phone-screen .device-summary-card .card-title,
 .phone-screen .alert-summary-card .card-title {
-  font-size: 1.04rem !important;
+  font-size: 0.98rem !important;
   font-weight: 520 !important;
   line-height: 1.34 !important;
   letter-spacing: -0.02em !important;
@@ -7528,17 +7554,16 @@ h2 {
   line-height: 1.56 !important;
 }
 
-.phone-screen .home-safety-card .home-metric-row,
+.phone-screen .home-safety-card .home-metric-row {
+  margin-top: 18px !important;
+}
+
 .phone-screen .emergency-card .sos-button {
   margin-top: 15px !important;
 }
 
 .phone-screen .alert-summary-card .alert-list {
   margin-top: 25px !important;
-}
-
-.phone-screen .emergency-card {
-  gap: 25px !important;
 }
 
 .phone-screen .emergency-card .sos-button {
@@ -7550,15 +7575,36 @@ h2 {
   padding: 11px 12px !important;
 }
 
+.phone-screen .home-member-card {
+  gap: 11px !important;
+  padding-top: 16px !important;
+}
+
+.phone-screen .home-member-header {
+  align-items: flex-start !important;
+}
+
+.phone-screen .guardian-manage-button {
+  align-self: center;
+}
+
+.phone-screen .connected-guardian-card {
+  gap: 0 !important;
+}
+
+.phone-screen .connected-guardian-card .section-title-row {
+  margin-bottom: 0 !important;
+}
+
 .phone-screen .home-member-header > div,
-.phone-screen .wearable-pairing-card > span:last-child,
+.phone-screen .wearable-pairing-card > span:first-child,
 .phone-screen .settings-link-card {
   display: grid;
-  gap: 9px !important;
+  gap: 3px !important;
 }
 
 .phone-screen .settings-link-card {
-  padding: 14px !important;
+  padding: 20px !important;
 }
 
 .phone-screen {
@@ -7578,21 +7624,9 @@ h2 {
 }
 
 .phone-screen .living-signal-panel-hero .card-title {
-  font-size: 1.04rem !important;
+  font-size: 0.98rem !important;
   font-weight: 520 !important;
   line-height: 1.34 !important;
-}
-
-.phone-screen .living-signal-arrow-back {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  color: #111827 !important;
-  font-size: 1.3rem !important;
-  font-weight: 420 !important;
 }
 
 .phone-screen .living-signal-hero-spacer {
@@ -7603,6 +7637,7 @@ h2 {
 .phone-screen .living-signal-inline-add {
   min-height: 32px;
   padding: 0 12px;
+  flex-shrink: 0;
 }
 
 .phone-screen .living-signal-screen {
@@ -7622,7 +7657,7 @@ h2 {
 
 .phone-screen .living-signal-section-row h3,
 .phone-screen .living-signal-item-header h4 {
-  font-size: 1.04rem !important;
+  font-size: 0.98rem !important;
   font-weight: 520 !important;
 }
 
@@ -7642,6 +7677,13 @@ h2 {
   padding: 0 !important;
   font-size: 13.12px !important;
   line-height: 1.56 !important;
+}
+
+.phone-screen .living-signal-section-row .back-button span {
+  margin-top: 0 !important;
+  padding: 0 !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
 }
 
 .phone-screen .living-signal-item-actions {
@@ -7739,10 +7781,18 @@ h2 {
 .phone-screen .wearable-pairing-card p:not(.card-label),
 .phone-screen .wearable-scanner-card > p:not(.card-label):not(.member-status-message),
 .phone-screen .guardian-status-card p:not(.card-label) {
-  margin-top: 4px !important;
+  margin-top: 10px !important;
   padding: 0 !important;
   font-size: 13.12px !important;
   line-height: 1.56 !important;
+}
+
+.phone-screen .guardian-form-card > .field:first-of-type {
+  margin-top: 6px;
+}
+
+.phone-screen .alert-card .alert-card-message {
+  margin-top: 3px !important;
 }
 
 .phone-screen .alert-card-main.no-icon {
@@ -7751,7 +7801,7 @@ h2 {
 }
 
 .phone-screen .alert-card.unread {
-  border-color: var(--app-primary) !important;
+  border-color: #f3c2cd !important;
 }
 
 .phone-screen .status-badge {
@@ -7811,6 +7861,30 @@ h2 {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.phone-screen .alert-detail-hero.device-add-hero {
+  align-items: baseline !important;
+  gap: 8px !important;
+}
+
+.phone-screen .alert-detail-hero.device-add-hero .back-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  flex: 0 0 auto;
+  padding: 0;
+  color: #172033;
+  font-size: 1.55rem;
+  line-height: 1;
+  transform: translateY(1px);
+}
+
+.phone-screen .alert-detail-hero.device-add-hero .card-title {
+  margin: 0;
 }
 
 .phone-screen .alert-detail-heading {
@@ -7876,7 +7950,7 @@ h2 {
   margin: 0;
   color: #64748b;
   font-size: 0.7rem;
-  font-weight: 900;
+  font-weight: 430;
   line-height: 1.5;
 }
 
@@ -7912,7 +7986,7 @@ h2 {
 .phone-screen .alert-stats-card strong {
   color: var(--app-text);
   font-size: 1.08rem;
-  font-weight: 520;
+  font-weight: 500;
   line-height: 1.3;
 }
 
@@ -7935,24 +8009,61 @@ h2 {
   font-weight: 420 !important;
 }
 
+.phone-screen .alert-detail-panel .action-row.single-action {
+  grid-template-columns: 1fr !important;
+}
+
+.phone-screen .alert-detail-panel .action-row .compact-button {
+  width: 100%;
+}
+
+.home-guide-card,
+.device-hero-card,
+.status-card,
+.emergency-card,
+.alert-summary-card,
+.device-summary-card,
+.uwb-card,
+.alert-detail-panel,
+.warning-recommendation-card,
+.device-manager-card,
+.connected-guardian-card,
+.guardian-form-card,
+.wearable-pairing-card,
+.settings-link-card,
+.wearable-scanner-card {
+  gap: 11px;
+}
+
 .phone-screen .device-add-hero {
   display: flex !important;
-  align-items: center !important;
-  gap: 12px !important;
+  align-items: baseline !important;
+  gap: 8px !important;
 }
 
 .phone-screen .device-add-hero .back-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  min-width: 24px;
-  min-height: 24px;
+  width: 32px;
+  min-width: 32px;
+  min-height: 32px;
   flex: 0 0 auto;
+  padding: 0;
+  color: #172033;
+  font-size: 1.55rem;
+  line-height: 1;
+  transform: translateY(1px);
 }
 
-.phone-screen .device-add-hero .card-title {
+.phone-screen .device-add-hero .card-title,
+.phone-screen .alert-detail-hero.device-add-hero .card-title {
   margin: 0;
+  color: #172033 !important;
+  font-size: 0.98rem !important;
+  font-weight: 520 !important;
+  line-height: 1.34 !important;
+  letter-spacing: -0.02em !important;
 }
 
 @keyframes home-loading-dot {

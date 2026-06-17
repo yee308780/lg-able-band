@@ -1,6 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { confirmAlert, replayAlert } from '../services/alertService'
 import { getWarningRecommendation } from '../services/warningService'
+
+function scrollAppContentToTop() {
+  const appContent = document.querySelector('.app-content')
+  if (appContent instanceof HTMLElement) {
+    appContent.scrollTo({ top: 0, left: 0 })
+  }
+
+  window.scrollTo({ top: 0, left: 0 })
+}
 
 const typeLabels = {
   LIFE: '생활',
@@ -80,6 +89,14 @@ export function AlertsTab({
   )
 
   const alertStats = useMemo(() => buildAlertStats(alertItems), [alertItems])
+
+  useEffect(() => {
+    if (selectedAlertId === null && alertView !== 'stats') {
+      return
+    }
+
+    scrollAppContentToTop()
+  }, [alertView, selectedAlertId])
 
   async function handleSelectAlert(alertId) {
     setSelectedAlertId(alertId)
@@ -274,7 +291,7 @@ function AlertStatsPanel({ stats, onBack }) {
   return (
     <section className="tab-stack alert-tab" aria-labelledby="alert-stats-title">
       <section className="content-card alert-stats-panel">
-        <div className="alert-detail-hero">
+        <div className="alert-detail-hero device-add-hero">
           <button
             className="text-button back-button alert-detail-back"
             type="button"
@@ -312,7 +329,7 @@ function AlertDetail({ alert, feedbackMessage, onBack, onConfirm, onReplay, warn
 
   return (
     <section className="content-card alert-detail-panel" aria-labelledby="alert-detail-title">
-      <div className="alert-detail-hero">
+      <div className="alert-detail-hero device-add-hero">
         <button
           className="text-button back-button alert-detail-back"
           type="button"

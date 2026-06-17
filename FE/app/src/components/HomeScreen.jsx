@@ -8,6 +8,15 @@ import { DevicesTab } from './DevicesTab'
 import { HomeTab } from './HomeTab'
 import { VoiceChatbot } from './VoiceChatbot'
 
+function scrollAppContentToTop() {
+  const appContent = document.querySelector('.app-content')
+  if (appContent instanceof HTMLElement) {
+    appContent.scrollTo({ top: 0, left: 0 })
+  }
+
+  window.scrollTo({ top: 0, left: 0 })
+}
+
 const statusDisplays = {
   SAFE: { label: '안전', emoji: '🙂' },
   CAUTION: { label: '주의', emoji: '😐' },
@@ -127,6 +136,21 @@ export function HomeScreen({ session, onLogout }) {
 
     return tabTitles[activeTab]
   }, [activeTab, menuScreen])
+
+  useEffect(() => {
+    const isMenuDetailScreen = activeTab === 'menu' && menuScreen !== 'root'
+    const isAlertStatsScreen = activeTab === 'alerts' && alertsScreen === 'stats'
+
+    if (!isMenuDetailScreen && !isAlertStatsScreen) {
+      return
+    }
+
+    scrollAppContentToTop()
+  }, [activeTab, alertsScreen, menuScreen])
+
+  useEffect(() => {
+    scrollAppContentToTop()
+  }, [activeTab])
 
   function handleTabChange(nextTab) {
     setActiveTab(nextTab)
@@ -368,7 +392,7 @@ function MenuTab({
             <p>{guardianMembers.length}명</p>
           </div>
           <button
-            className="member-more-button"
+            className="device-inline-add-button guardian-manage-button"
             type="button"
             aria-label="홈 멤버 관리"
             onClick={onOpenGuardianConnection}
@@ -417,13 +441,13 @@ function MenuTab({
       </section>
 
       <button className="soft-card wearable-pairing-card" type="button" onClick={onOpenWearablePairing}>
-        <span className="wearable-pairing-icon" aria-hidden="true">
-          QR
-        </span>
         <span>
           <p className="card-label">웨어러블 연동</p>
-          <strong className="card-title">밴드 QR을 카메라로 스캔해요.</strong>
+          <strong className="card-title">카메라로 밴드 QR코드 스캔</strong>
           <p>웨어러블 화면의 QR 코드를 비추면 바로 연결을 시작합니다.</p>
+        </span>
+        <span className="wearable-pairing-icon" aria-hidden="true">
+          QR
         </span>
       </button>
 
@@ -436,8 +460,8 @@ function MenuTab({
         </p>
       </button>
 
-      <button className="secondary-button full-button" type="button" onClick={onLogout}>
-        로그인으로 돌아가기
+      <button className="secondary-button full-button settings-logout-button" type="button" onClick={onLogout}>
+        로그아웃
       </button>
     </section>
   )
@@ -580,13 +604,18 @@ function WearablePairingScannerScreen({ onBack }) {
 
   return (
     <section className="tab-stack wearable-scanner-screen" aria-labelledby="wearable-scanner-title">
-      <button className="text-link-button" type="button" onClick={onBack}>
-        메뉴로 돌아가기
-      </button>
-
       <section className="content-card wearable-scanner-card">
-        <p className="card-label">웨어러블 연동</p>
-        <strong className="card-title" id="wearable-scanner-title">밴드 QR을 스캔해주세요.</strong>
+        <div className="alert-detail-hero device-add-hero">
+          <button
+            className="text-button back-button alert-detail-back"
+            type="button"
+            aria-label="목록으로 돌아가기"
+            onClick={onBack}
+          >
+            <span aria-hidden="true">←</span>
+          </button>
+          <strong className="card-title" id="wearable-scanner-title">밴드 QR을 스캔해주세요.</strong>
+        </div>
         <p>
           웨어러블의 첫 화면 또는 연동 화면에 표시된 QR 코드를 카메라로 비춰주세요.
         </p>
@@ -611,9 +640,6 @@ function WearablePairingScannerScreen({ onBack }) {
           </div>
         </div>
 
-        <p className="member-status-message" role="status">
-          {scannerMessage}
-        </p>
         {detectedValue ? (
           <p className="scanner-result">연동 정보: {formatPairingResult(detectedValue)}</p>
         ) : null}
@@ -770,7 +796,7 @@ function GuardianConnectionScreen({
   return (
     <section className="tab-stack guardian-connection-screen" aria-labelledby="guardian-connection-title">
       <form className="content-card guardian-form-card" onSubmit={handleSubmit}>
-        <div className="guardian-form-hero">
+        <div className="guardian-form-hero device-add-hero">
           <button
             className="text-button back-button alert-detail-back"
             type="button"

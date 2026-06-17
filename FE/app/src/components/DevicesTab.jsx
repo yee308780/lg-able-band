@@ -2,6 +2,15 @@
 import { useBleProximityGuide } from '../features/ble/useBleProximityGuide'
 import { createDevice } from '../services/deviceService'
 
+function scrollAppContentToTop() {
+  const appContent = document.querySelector('.app-content')
+  if (appContent instanceof HTMLElement) {
+    appContent.scrollTo({ top: 0, left: 0 })
+  }
+
+  window.scrollTo({ top: 0, left: 0 })
+}
+
 const connectionLabels = {
   CONNECTED: '연결됨',
   WARNING: '주의 필요',
@@ -141,6 +150,14 @@ export function DevicesTab({ devices = [], maxDeviceCount, uwb }) {
     return () => window.clearTimeout(timeoutId)
   }, [connectionMessage])
 
+  useEffect(() => {
+    if (screenMode === 'list') {
+      return
+    }
+
+    scrollAppContentToTop()
+  }, [screenMode])
+
   function handleToggleDevicePicker() {
     setIsDevicePickerOpen((current) => !current)
     setConnectionMessage('')
@@ -258,9 +275,13 @@ export function DevicesTab({ devices = [], maxDeviceCount, uwb }) {
       <section className="tab-stack device-tab" aria-labelledby="device-add-title">
         <section className="content-card device-add-editor">
           <div className="device-add-hero">
-            <button className="text-button back-button" type="button" onClick={closeCreatePage}>
+            <button
+              className="text-button back-button alert-detail-back"
+              type="button"
+              aria-label="목록으로 돌아가기"
+              onClick={closeCreatePage}
+            >
               <span aria-hidden="true">←</span>
-              <span className="sr-only">목록으로 돌아가기</span>
             </button>
             <strong className="card-title" id="device-add-title">가전 추가</strong>
           </div>
