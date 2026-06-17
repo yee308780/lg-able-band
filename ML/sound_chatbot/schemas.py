@@ -59,6 +59,16 @@ class WearableState(BaseModel):
     batteryLevel: Optional[int] = None
 
 
+class UwbLocationState(BaseModel):
+    targetName: Optional[str] = None
+    targetDeviceType: Optional[str] = None
+    room: Optional[str] = None
+    distanceM: Optional[float] = None
+    direction: Optional[str] = None
+    vibrationPattern: Optional[str] = None
+    voiceGuide: Optional[str] = None
+
+
 class DeviceStates(BaseModel):
     washer: Optional[WasherState] = None
     refrigerator: Optional[RefrigeratorState] = None
@@ -75,6 +85,7 @@ class ChatContext(BaseModel):
     recentAlert: Optional[AlertSummary] = None
     lastSpokenAlert: Optional[AlertSummary] = None
     devices: DeviceStates = Field(default_factory=DeviceStates)
+    uwb: Optional[UwbLocationState] = None
 
 
 class ChatMessage(BaseModel):

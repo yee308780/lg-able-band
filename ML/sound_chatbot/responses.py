@@ -27,6 +27,46 @@ def bool_answer(value: Optional[bool], true_text: str, false_text: str, unknown_
     return unknown_text
 
 
+def format_distance_meters(value: Optional[float]) -> Optional[str]:
+    if value is None:
+        return None
+    if float(value).is_integer():
+        return f"{int(value)}미터"
+    return f"{value:.1f}미터"
+
+
+def location_answer(context: ChatContext, requested_device: Optional[str]) -> str:
+    uwb = context.uwb
+    if not uwb:
+        return "현재 UWB 위치 정보가 없어요. 기기 화면에서 UWB 연결 상태를 확인해 주세요."
+
+    target_name = uwb.targetName or "연결된 가전"
+    target_type = (uwb.targetDeviceType or "").upper()
+    if requested_device and requested_device not in {"LOCATION", target_type}:
+        prefix = f"현재 UWB로 바로 안내할 수 있는 가전은 {target_name}입니다. "
+    else:
+        prefix = ""
+
+    if uwb.voiceGuide:
+        return prefix + uwb.voiceGuide
+
+    distance = format_distance_meters(uwb.distanceM)
+    details = []
+    if uwb.room:
+        details.append(f"{uwb.room}에 있어요")
+    if distance:
+        details.append(f"현재 약 {distance} 떨어져 있어요")
+    if uwb.direction:
+        details.append(f"{uwb.direction} 방향입니다")
+    if uwb.vibrationPattern:
+        details.append(f"밴드는 {uwb.vibrationPattern}으로 안내합니다")
+
+    if not details:
+        return prefix + f"{target_name} 위치를 확인 중이에요. 기기 화면에서 UWB 연결 상태를 확인해 주세요."
+
+    return prefix + f"{target_name}은 " + ". ".join(details) + "."
+
+
 def build_backend_action(action_type: str, message: str) -> Dict[str, Any]:
     return {
         "type": action_type,
@@ -52,7 +92,7 @@ def build_response(request: ChatRequest, match: IntentMatch) -> ChatResponse:
         action = "ASK_REPEAT"
         quick_replies = ["다시 말하기", "도움말"]
     elif intent == "HELP":
-        answer = "미확인 알림, 위험 알림, 최근 알림, 세탁기 남은 시간, 기기 상태, 보호자 연락을 물어볼 수 있어요."
+        answer = "미확인 알림, 위험 알림, 최근 알림, 세탁기 남은 시간, 기기 상태, UWB 가전 위치, 보호자 연락을 물어볼 수 있어요."
         action = "GUIDE_AVAILABLE_COMMANDS"
     elif intent == "UNREAD_ALERTS_CHECK":
         count = len(context.unreadAlerts)
@@ -80,6 +120,10 @@ def build_response(request: ChatRequest, match: IntentMatch) -> ChatResponse:
         else:
             answer = "다시 말해드릴 방금 알림이 없어요."
         action = "REPEAT_LAST_ALERT"
+    elif intent == "LOCATION_CHECK":
+        answer = location_answer(context, match.device)
+        action = "READ_DEVICE_LOCATION"
+        quick_replies = ["세탁기 위치 알려줘", "UWB 연결된 가전 어디 있어?", "최근 알림 읽어줘"]
     elif intent == "WASHER_TIME_CHECK":
         washer = devices.washer
         if washer and washer.remainingMinutes is not None:

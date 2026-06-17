@@ -72,6 +72,14 @@ def sample_context():
             "doorSensor": {"doorOpen": False, "securityEvent": False},
             "wearable": {"name": "LG Able Band", "connectionStatus": "CONNECTED", "batteryLevel": 82},
         },
+        "uwb": {
+            "targetName": "세탁기",
+            "targetDeviceType": "WASHER",
+            "room": "세탁실",
+            "distanceM": 2.4,
+            "vibrationPattern": "짧은 진동",
+            "voiceGuide": "세탁기까지 약 2.4미터입니다. 오른쪽으로 천천히 이동하세요.",
+        },
     }
 
 
@@ -91,6 +99,7 @@ def main():
         ("recent_alert", {"text": "최근 알림 읽어줘", "context": context}, "READ_RECENT_ALERT"),
         ("repeat_alert", {"text": "방금 알림 다시 말해줘", "context": context}, "REPEAT_LAST_ALERT"),
         ("washer_time", {"text": "세탁기 몇 분 남았어?", "context": context}, "WASHER_TIME_CHECK"),
+        ("uwb_location", {"text": "UWB 연결된 가전 위치 알려줘", "context": context}, "LOCATION_CHECK"),
         ("refrigerator_door", {"text": "냉장고 문 열려 있어?", "context": context}, "REFRIGERATOR_DOOR_CHECK"),
         ("air_quality", {"text": "공기질 괜찮아?", "context": context}, "AIR_QUALITY_CHECK"),
         ("range_power", {"text": "인덕션 켜져 있어?", "context": context}, "RANGE_POWER_CHECK"),
