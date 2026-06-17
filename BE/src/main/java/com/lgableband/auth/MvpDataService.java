@@ -107,6 +107,8 @@ public class MvpDataService {
 			return new LoginResult(session.accessToken(), account.role(), accountSummary, userProfile, guardianProfile);
 		}
 
+		ensureDemoAdminUser(jdbcTemplate);
+
 		DbAccount account = jdbcTemplate.query(
 			"""
 			SELECT account_id, role, email, password_hash
@@ -314,7 +316,7 @@ public class MvpDataService {
 			String guardianName = hasGuardian ? this.mockDataStore.guardians(user.userId()).get(0).name() : null;
 			return new HomeData(
 				new HomeUser(user.userId(), this.mockDataStore.accountById(user.accountId()).name(), user.accessibilityType().name()),
-				new HomeSafetyStatus(SafetyStatusLevel.SAFE, "현재 위험 알림이 없습니다.", OffsetDateTime.now()),
+				new HomeSafetyStatus(SafetyStatusLevel.SAFE, "Able Band가 실시간 안전 상태를 확인 중입니다.", OffsetDateTime.now()),
 				alerts,
 				new HomeDeviceSummary(devices.size(), connected, warning, uwb),
 				new HomeEmergency(hasGuardian, guardianName),
@@ -336,7 +338,7 @@ public class MvpDataService {
 
 		return new HomeData(
 			new HomeUser(user.userId(), user.name(), user.accessibilityType().name()),
-			new HomeSafetyStatus(SafetyStatusLevel.SAFE, "현재 위험 알림이 없습니다.", OffsetDateTime.now()),
+			new HomeSafetyStatus(SafetyStatusLevel.SAFE, "Able Band가 실시간 안전 상태를 확인 중입니다.", OffsetDateTime.now()),
 			alerts,
 			new HomeDeviceSummary(total, connected, warning, uwb),
 			new HomeEmergency(hasGuardian, guardianName),
@@ -505,7 +507,7 @@ public class MvpDataService {
 		return jdbcTemplate.query(
 			"""
 			SELECT a.alert_id, a.alert_type, a.severity, a.title, a.message, a.occurred_at, a.status,
-			       COALESCE(d.name, '') AS device_name
+			       COALESCE(JSON_UNQUOTE(JSON_EXTRACT(de.payload_json, '$.deviceName')), d.name, '') AS device_name
 			FROM alert a
 			LEFT JOIN device_event de ON de.event_id = a.event_id
 			LEFT JOIN device d ON d.device_id = de.device_id
@@ -538,6 +540,31 @@ public class MvpDataService {
 
 	private JdbcTemplate jdbcTemplate() {
 		return this.jdbcTemplateProvider.getIfAvailable();
+	}
+
+	private void ensureDemoAdminUser(JdbcTemplate jdbcTemplate) {
+		Integer count = jdbcTemplate.queryForObject(
+			"SELECT COUNT(*) FROM account WHERE role = 'USER' AND email = ?",
+			Integer.class,
+			"admin@example.com"
+		);
+		if (count != null && count > 0) {
+			return;
+		}
+
+		long accountId = insertAccount(jdbcTemplate, AccountRole.USER, "admin@example.com", "password1234");
+		long userId = insertUser(
+			jdbcTemplate,
+			accountId,
+			"관리자",
+			AccessibilityType.VISUAL,
+			new NotificationPrefs(List.of(NotificationChannel.VOICE, NotificationChannel.VIBRATION), true, true)
+		);
+		insertNotificationChannels(
+			jdbcTemplate,
+			userId,
+			List.of(NotificationChannel.VOICE, NotificationChannel.VIBRATION)
+		);
 	}
 
 	private String extractToken(String authorization) {

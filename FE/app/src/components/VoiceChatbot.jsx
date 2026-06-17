@@ -143,19 +143,12 @@ export function VoiceChatbot({
 
   useEffect(() => {
     isOpenRef.current = isOpen
-
-    if (!embedded && !isOpen) {
-      // eslint-disable-next-line react-hooks/immutability
-      startWakeListening()
-    }
   }, [embedded, isOpen])
 
   useEffect(() => {
     if (embedded) {
       isOpenRef.current = true
       conversationActiveRef.current = true
-    } else {
-      startWakeListening()
     }
 
     return () => {
@@ -257,7 +250,6 @@ export function VoiceChatbot({
       onClose?.()
     } else {
       setIsOpen(false)
-      startWakeListening()
     }
   }
 
