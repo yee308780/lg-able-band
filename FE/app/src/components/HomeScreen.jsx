@@ -1,6 +1,7 @@
 import jsQR from 'jsqr'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { LivingSignalSettingsScreen } from '../features/living-signal'
+import { getAccessibilitySettings, updateAccessibilitySettings } from '../services/accessibilityService'
 import { getAppPreview, getHomeSummary } from '../services/homeService'
 import { createEmergencyRequest } from '../services/emergencyService'
 import { deleteGuardian, getGuardians, linkGuardianByEmail } from '../services/guardianService'
@@ -9,21 +10,20 @@ import { DevicesTab } from './DevicesTab'
 import { HomeTab } from './HomeTab'
 import { CHATBOT_INTERRUPT_EVENT, VoiceChatbot } from './VoiceChatbot'
 import { completeWearablePairing } from '../services/wearablePairingService'
+import {
+  getEmergencyAvailability,
+  getSafetyStatusDisplay,
+  mergeAlertStatusIntoHomeSummary,
+  updateAlertsWithStatus,
+} from '../utils/homeSummaryUtils'
 
 function scrollAppContentToTop() {
   const appContent = document.querySelector('.app-content')
-  if (appContent instanceof HTMLElement) {
+  if (appContent instanceof HTMLElement && typeof appContent.scrollTo === 'function') {
     appContent.scrollTo({ top: 0, left: 0 })
   }
 
   window.scrollTo({ top: 0, left: 0 })
-}
-
-const statusDisplays = {
-  SAFE: { label: '안전', emoji: '🙂' },
-  CAUTION: { label: '주의', emoji: '😐' },
-  DANGER: { label: '위험', emoji: '😟' },
-  EMERGENCY: { label: '긴급', emoji: '😨' },
 }
 
 const tabs = [
@@ -49,6 +49,8 @@ const connectionStatusLabels = {
 }
 
 export function HomeScreen({ session, onLogout }) {
+  const sessionEmail = session.account.email
+  const sessionAccessibilityType = session.userProfile?.accessibilityType
   const [activeTab, setActiveTab] = useState('home')
   const [alertsScreen, setAlertsScreen] = useState('list')
   const [menuScreen, setMenuScreen] = useState('root')
@@ -72,9 +74,26 @@ export function HomeScreen({ session, onLogout }) {
     async function loadHome() {
       try {
         const [summary, preview] = await Promise.all([getHomeSummary(), getAppPreview()])
+        const accessibilityType = sessionAccessibilityType || summary.user?.accessibilityType || 'VISUAL'
+        const accessibilitySettings = await getAccessibilitySettings({
+          accessibilityType,
+          identity: sessionEmail,
+        })
 
         if (isMounted) {
-          setHomeState({ loading: false, error: '', summary, preview })
+          setHomeState({
+            loading: false,
+            error: '',
+            summary,
+            preview: {
+              ...preview,
+              accessibility: createAccessibilityView(
+                preview.accessibility,
+                accessibilitySettings,
+                accessibilityType,
+              ),
+            },
+          })
         }
       } catch {
         if (isMounted) {
@@ -93,7 +112,7 @@ export function HomeScreen({ session, onLogout }) {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [sessionAccessibilityType, sessionEmail])
 
   useEffect(() => {
     let isMounted = true
@@ -168,8 +187,14 @@ export function HomeScreen({ session, onLogout }) {
     }
   }
 
-  async function handleEmergencyRequest() {
+  async function handleEmergencyRequest(emergencyAvailability) {
     if (emergencySubmitting) {
+      return
+    }
+
+    const availability = emergencyAvailability || getEmergencyAvailability(homeState.summary)
+    if (!availability.canRequest) {
+      setEmergencyMessage(availability.reason)
       return
     }
 
@@ -177,12 +202,59 @@ export function HomeScreen({ session, onLogout }) {
     setEmergencyMessage('긴급 요청을 보내는 중입니다.')
     try {
       const request = await createEmergencyRequest()
-      setEmergencyMessage(request.message || '보호자에게 긴급 요청을 보냈습니다.')
+      setEmergencyMessage(request.statusMessage || '보호자에게 긴급 요청을 보냈습니다.')
+      const [summary, preview] = await Promise.all([getHomeSummary(), getAppPreview()])
+      setHomeState({ loading: false, error: '', summary, preview })
     } catch (error) {
       setEmergencyMessage(error.message || '긴급 요청을 보내지 못했습니다.')
     } finally {
       setEmergencySubmitting(false)
     }
+  }
+
+  function handleAlertStatusChange(alertId, status) {
+    setHomeState((currentState) => {
+      if (!currentState.summary || !currentState.preview) {
+        return currentState
+      }
+
+      return {
+        ...currentState,
+        summary: mergeAlertStatusIntoHomeSummary(currentState.summary, alertId, status),
+        preview: {
+          ...currentState.preview,
+          alerts: updateAlertsWithStatus(currentState.preview.alerts, alertId, status),
+        },
+      }
+    })
+  }
+
+  async function handleAccessibilityChange(nextSettings) {
+    const accessibilityType =
+      sessionAccessibilityType || homeState.summary?.user?.accessibilityType || 'VISUAL'
+    const savedSettings = await updateAccessibilitySettings({
+      accessibilityType,
+      identity: sessionEmail,
+      settings: nextSettings,
+    })
+
+    setHomeState((currentState) => {
+      if (!currentState.preview) {
+        return currentState
+      }
+
+      return {
+        ...currentState,
+        preview: {
+          ...currentState.preview,
+          accessibility: createAccessibilityView(
+            currentState.preview.accessibility,
+            savedSettings,
+            accessibilityType,
+          ),
+        },
+      }
+    })
   }
 
   async function handleLinkGuardian(form) {
@@ -229,10 +301,7 @@ export function HomeScreen({ session, onLogout }) {
   }
 
   const { preview, summary } = homeState
-  const statusDisplay = statusDisplays[summary.safetyStatus.level] || {
-    label: summary.safetyStatus.level,
-    emoji: '🙂',
-  }
+  const statusDisplay = getSafetyStatusDisplay(summary.safetyStatus.level)
   const homeUserName = summary.user?.name || session.account.name
   const displayTitle = activeTab === 'home' ? `${homeUserName} 홈` : currentTitle
 
@@ -259,16 +328,13 @@ export function HomeScreen({ session, onLogout }) {
                 type="button"
                 aria-label="알림 통계 보기"
                 aria-pressed={alertsScreen === 'stats'}
-                onClick={() =>
-                  setAlertsScreen((currentScreen) => (currentScreen === 'stats' ? 'list' : 'stats'))
-                }
+                onClick={() => setAlertsScreen((current) => (current === 'stats' ? 'list' : 'stats'))}
               >
                 <svg viewBox="0 0 24 24" focusable="false">
                   <path d="M5 19V10" />
                   <path d="M12 19V5" />
                   <path d="M19 19v-7" />
                 </svg>
-                <span>통계</span>
               </button>
             ) : null}
           </div>
@@ -292,6 +358,8 @@ export function HomeScreen({ session, onLogout }) {
             accessibilityType={session.userProfile?.accessibilityType || 'VISUAL'}
             alerts={preview.alerts}
             alertView={alertsScreen}
+            onAlertStatusChange={handleAlertStatusChange}
+            onCloseStats={() => setAlertsScreen('list')}
           />
         ) : null}
         {activeTab === 'devices' ? (
@@ -306,6 +374,7 @@ export function HomeScreen({ session, onLogout }) {
             accessibility={preview.accessibility}
             guardians={linkedGuardians}
             livingSignals={preview.livingSignals}
+            onAccessibilityChange={handleAccessibilityChange}
             onOpenGuardianConnection={() => setMenuScreen('guardianConnection')}
             onOpenLivingSignals={() => setMenuScreen('livingSignals')}
             onOpenWearablePairing={() => setMenuScreen('wearablePairing')}
@@ -352,10 +421,62 @@ export function HomeScreen({ session, onLogout }) {
   )
 }
 
+function createAccessibilityView(currentAccessibility, settings, accessibilityType) {
+  const largeText = Boolean(settings.largeText)
+
+  return {
+    ...currentAccessibility,
+    ...settings,
+    disabilityType: formatAccessibilityType(accessibilityType || currentAccessibility?.disabilityType),
+    largeText,
+    textSize: largeText ? '크게' : '기본',
+  }
+}
+
+function formatAccessibilityType(value) {
+  if (value === 'VISUAL') {
+    return '시각장애'
+  }
+
+  if (value === 'HEARING') {
+    return '청각장애'
+  }
+
+  return value || '지원 정보 없음'
+}
+
+const accessibilityToggleItems = [
+  {
+    key: 'voiceGuide',
+    label: '음성 안내',
+    icon: '음',
+    description: '위험 알림과 주요 안내를 음성으로 들려줍니다.',
+  },
+  {
+    key: 'vibrationGuide',
+    label: '진동 안내',
+    icon: '진',
+    description: '밴드와 앱 알림을 진동 중심으로 전달합니다.',
+  },
+  {
+    key: 'largeText',
+    label: '큰 글씨',
+    icon: 'Aa',
+    description: '큰 글씨 안내 설정을 저장합니다.',
+  },
+  {
+    key: 'highContrast',
+    label: '고대비',
+    icon: '대',
+    description: '고대비 안내 설정을 저장합니다.',
+  },
+]
+
 function MenuTab({
   accessibility,
   guardians,
   livingSignals,
+  onAccessibilityChange,
   onOpenGuardianConnection,
   onOpenLivingSignals,
   onOpenWearablePairing,
@@ -363,6 +484,8 @@ function MenuTab({
   userName,
 }) {
   const [guardianInviteMessage, setGuardianInviteMessageState] = useState('')
+  const [accessibilityMessage, setAccessibilityMessage] = useState('')
+  const [accessibilitySavingKey, setAccessibilitySavingKey] = useState('')
   function setGuardianInviteMessage(nextMessage) {
     setGuardianInviteMessageState((currentMessage) =>
       currentMessage === nextMessage ? '' : nextMessage,
@@ -383,20 +506,78 @@ function MenuTab({
       status: formatConnectionStatus(member.connectionStatus || member.status),
     })),
   ]
+  const accessibilitySettings = {
+    voiceGuide: Boolean(accessibility.voiceGuide),
+    vibrationGuide: Boolean(accessibility.vibrationGuide),
+    highContrast: Boolean(accessibility.highContrast),
+    largeText: Boolean(accessibility.largeText || accessibility.textSize === '크게'),
+  }
+
+  async function handleAccessibilityToggle(settingKey) {
+    const nextSettings = {
+      ...accessibilitySettings,
+      [settingKey]: !accessibilitySettings[settingKey],
+    }
+
+    setAccessibilitySavingKey(settingKey)
+    setAccessibilityMessage('접근성 설정을 저장하는 중입니다.')
+    try {
+      await onAccessibilityChange(nextSettings)
+      setAccessibilityMessage('접근성 설정을 저장했습니다.')
+    } catch (error) {
+      setAccessibilityMessage(error.message || '접근성 설정을 저장하지 못했습니다.')
+    } finally {
+      setAccessibilitySavingKey('')
+    }
+  }
 
   return (
     <section className="tab-stack" aria-labelledby="menu-title">
-      <section className="content-card">
-        <div className="section-title-row" id="menu-title">
-          <strong className="card-title">접근성 설정</strong>
-          <span>{accessibility.textSize}</span>
+      <section className="content-card accessibility-summary-card">
+        <div className="accessibility-card-header" id="menu-title">
+          <div>
+            <p className="card-label">접근성 설정</p>
+            <h2>알림과 화면 보조 설정</h2>
+          </div>
+          <span className="accessibility-type-badge">{accessibility.disabilityType}</span>
         </div>
-        <div className="settings-grid">
-          <span>{accessibility.disabilityType}</span>
-          <span>{accessibility.voiceGuide ? '음성 안내 ON' : '음성 안내 OFF'}</span>
-          <span>{accessibility.vibrationGuide ? '진동 안내 ON' : '진동 안내 OFF'}</span>
-          <span>{accessibility.highContrast ? '고대비 ON' : '고대비 OFF'}</span>
+        <p className="accessibility-quick-copy">
+          필요한 안내 방식을 켜두면 알림과 위험 안내 설정으로 저장됩니다.
+        </p>
+        <div className="accessibility-quick-grid">
+          {accessibilityToggleItems.map((item) => {
+            const isActive = accessibilitySettings[item.key]
+            const isSaving = accessibilitySavingKey === item.key
+            return (
+              <button
+                className={isActive ? 'accessibility-quick-toggle active' : 'accessibility-quick-toggle'}
+                type="button"
+                key={item.key}
+                aria-pressed={isActive}
+                disabled={Boolean(accessibilitySavingKey)}
+                onClick={() => handleAccessibilityToggle(item.key)}
+              >
+                <span className="accessibility-quick-icon" aria-hidden="true">
+                  {item.icon}
+                </span>
+                <span className="accessibility-quick-text">
+                  <strong>
+                    {item.label} {isActive ? 'ON' : 'OFF'}
+                  </strong>
+                  <small>{isSaving ? '저장 중' : item.description}</small>
+                </span>
+                <span className="accessibility-inline-switch" aria-hidden="true">
+                  <span />
+                </span>
+              </button>
+            )
+          })}
         </div>
+        {accessibilityMessage ? (
+          <p className="accessibility-save-message" role="status">
+            {accessibilityMessage}
+          </p>
+        ) : null}
       </section>
 
       <section className="soft-card home-member-card" aria-labelledby="home-member-title">
@@ -694,48 +875,102 @@ function WearablePairingScannerScreen({ onBack }) {
 }
 
 async function openCameraStream(video) {
-  const primaryConstraints = await getPreferredCameraConstraints()
-  let stream = await navigator.mediaDevices.getUserMedia(primaryConstraints)
+  const constraintsCandidates = await getPreferredCameraConstraints()
+  let lastError = null
 
-  if (!video) {
-    return { stream }
+  for (const constraints of constraintsCandidates) {
+    let stream = null
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints)
+
+      if (!video) {
+        return { stream }
+      }
+
+      await attachVideoStream(video, stream)
+      const hasVisibleFrame = await waitForVisibleVideoFrame(video)
+      if (hasVisibleFrame) {
+        return { stream }
+      }
+
+      stopMediaStream(stream)
+      if (video) {
+        video.srcObject = null
+      }
+    } catch (error) {
+      lastError = error
+      stopMediaStream(stream)
+      if (video) {
+        video.srcObject = null
+      }
+    }
   }
 
-  await attachVideoStream(video, stream)
-  const hasVisibleFrame = await waitForVisibleVideoFrame(video)
-  if (hasVisibleFrame) {
-    return { stream }
-  }
-
-  stopMediaStream(stream)
-  const fallbackConstraints = { video: { facingMode: { ideal: 'environment' } } }
-  stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints)
-  await attachVideoStream(video, stream)
-  const fallbackHasVisibleFrame = await waitForVisibleVideoFrame(video)
-
-  if (!fallbackHasVisibleFrame) {
-    stopMediaStream(stream)
-    throw new Error('카메라는 켜졌지만 화면이 들어오지 않습니다. 다른 앱에서 카메라를 사용 중인지 확인해주세요.')
-  }
-
-  return { stream }
+  throw lastError || new Error('카메라는 켜졌지만 화면이 들어오지 않습니다. 다른 앱에서 카메라를 사용 중인지 확인해주세요.')
 }
 
 async function getPreferredCameraConstraints() {
   const devices = await listVideoInputDevices()
-  const physicalCamera = devices.find((device) => !isVirtualCamera(device))
+  const physicalCameras = devices.filter((device) => !isVirtualCamera(device))
+  const rearCamera = physicalCameras.find(isRearCamera)
+  const frontCamera = physicalCameras.find(isFrontCamera)
+  const fallbackPhysicalCamera = physicalCameras.find(
+    (device) => device.deviceId !== rearCamera?.deviceId && device.deviceId !== frontCamera?.deviceId,
+  )
 
-  if (physicalCamera?.deviceId) {
-    return {
+  const candidates = [
+    {
+      video: {
+        facingMode: { exact: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+    },
+    {
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+    },
+  ]
+
+  if (rearCamera?.deviceId) {
+    candidates.unshift({
       video: {
         deviceId: {
-          exact: physicalCamera.deviceId,
+          exact: rearCamera.deviceId,
         },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
       },
-    }
+    })
   }
 
-  return { video: true }
+  if (fallbackPhysicalCamera?.deviceId) {
+    candidates.push({
+      video: {
+        deviceId: {
+          exact: fallbackPhysicalCamera.deviceId,
+        },
+      },
+    })
+  }
+
+  if (frontCamera?.deviceId) {
+    candidates.push({
+      video: {
+        deviceId: {
+          exact: frontCamera.deviceId,
+        },
+      },
+    })
+  }
+
+  candidates.push({ video: true })
+
+  return candidates
 }
 
 async function listVideoInputDevices() {
@@ -749,6 +984,14 @@ async function listVideoInputDevices() {
 
 function isVirtualCamera(device) {
   return /virtual|obs|snap|xsplit|manycam|mirametrix/i.test(device.label || '')
+}
+
+function isRearCamera(device) {
+  return /back|rear|environment|후면|뒤/i.test(device.label || '')
+}
+
+function isFrontCamera(device) {
+  return /front|user|facetime|전면|앞/i.test(device.label || '')
 }
 
 async function attachVideoStream(video, stream) {
@@ -858,6 +1101,18 @@ function GuardianConnectionScreen({
   const [submitting, setSubmitting] = useState(false)
   const [deletingGuardianId, setDeletingGuardianId] = useState(null)
   const isPrimaryChecked = guardians.length === 0 || form.isPrimary
+
+  useEffect(() => {
+    if (!message.text) {
+      return undefined
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setMessage({ tone: '', text: '' })
+    }, 2400)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [message])
 
   function handleChange(field, value) {
     setForm((current) => ({
@@ -985,15 +1240,6 @@ function GuardianConnectionScreen({
           </label>
         </div>
 
-        {message.text ? (
-          <p
-            className={message.tone === 'error' ? 'member-status-message error' : 'member-status-message'}
-            role={message.tone === 'error' ? 'alert' : 'status'}
-          >
-            {message.text}
-          </p>
-        ) : null}
-
         <button className="primary-button full-button" type="submit" disabled={submitting}>
           {submitting ? '연결 중...' : '보호자 등록'}
         </button>
@@ -1045,6 +1291,24 @@ function GuardianConnectionScreen({
           <p className="empty-state">아직 연결된 보호자가 없습니다.</p>
         )}
       </section>
+
+      {message.text ? (
+        <div
+          className="device-toast guardian-toast"
+          role={message.tone === 'error' ? 'alert' : 'status'}
+          aria-live={message.tone === 'error' ? 'assertive' : 'polite'}
+        >
+          <p
+            className={
+              message.tone === 'error'
+                ? 'device-toast-message guardian-toast-message guardian-toast-message-error'
+                : 'device-toast-message guardian-toast-message'
+            }
+          >
+            {message.text}
+          </p>
+        </div>
+      ) : null}
     </section>
   )
 }

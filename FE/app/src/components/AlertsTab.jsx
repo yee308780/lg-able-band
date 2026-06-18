@@ -106,6 +106,7 @@ export function AlertsTab({
   accessibilityType,
   alerts,
   alertView = 'list',
+  onAlertStatusChange = () => {},
 }) {
   const [alertItems, setAlertItems] = useState(alerts)
   const [activeFilter, setActiveFilter] = useState('ALL')
@@ -190,6 +191,7 @@ export function AlertsTab({
             : alert,
         ),
       )
+      onAlertStatusChange(alertId, 'CONFIRMED')
       setFeedbackMessage('알림을 확인 완료로 처리했습니다.')
     } catch (error) {
       setFeedbackMessage(error.message || '알림 확인 처리에 실패했습니다.')
@@ -219,6 +221,7 @@ export function AlertsTab({
             : item,
         ),
       )
+      onAlertStatusChange(alert.alertId, 'REPLAYED')
     } catch (error) {
       if (!speechStarted) {
         setFeedbackMessage(error.message || '알림 다시 듣기에 실패했습니다.')

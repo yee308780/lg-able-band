@@ -5520,6 +5520,27 @@ h2 {
   font-weight: 420 !important;
 }
 
+.phone-screen .alert-filter-row {
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  align-items: start !important;
+  margin-bottom: 8px !important;
+}
+
+.phone-screen .filter-chip {
+  min-width: 0 !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 4px !important;
+  font-size: 0.71rem !important;
+  font-weight: 520 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  letter-spacing: -0.01em !important;
+}
+
 .phone-screen .card-label,
 .phone-screen .eyebrow,
 .phone-screen .header-summary,
@@ -6614,6 +6635,27 @@ h2 {
   animation: deviceToastFade 2.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+.guardian-toast {
+  bottom: 112px;
+}
+
+.guardian-toast-message {
+  min-width: min(100%, 280px);
+  padding: 14px 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.98);
+  color: #334155;
+  font-size: 0.98rem;
+  font-weight: 600;
+  line-height: 1.55;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16);
+}
+
+.guardian-toast-message-error {
+  background: rgba(255, 241, 242, 0.98);
+  color: #be123c;
+}
+
 @keyframes deviceToastFade {
   0% {
     opacity: 0;
@@ -7442,7 +7484,7 @@ h2 {
 
 .app-title-with-icon {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   width: 100%;
@@ -8132,24 +8174,32 @@ h2 {
 }
 
 .phone-screen .alert-header-stats-icon {
-  width: auto !important;
-  min-width: 74px;
-  height: 40px;
-  gap: 7px;
-  border: 1px solid #f3c2cd;
-  border-radius: 12px;
-  padding: 0 12px;
-  background: #ffffff;
-  color: #e11d48;
-  font-size: 0.78rem;
-  font-weight: 700;
-  box-shadow: 0 8px 18px rgba(225, 29, 72, 0.08);
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 33px !important;
+  min-width: 33px !important;
+  height: 33px !important;
+  padding: 0 !important;
+  border: 1px solid #d1d5db !important;
+  border-radius: 999px !important;
+  background: #ffffff !important;
+  color: #4b5563 !important;
+  font-size: 0 !important;
+  font-weight: 400 !important;
+  box-shadow: none !important;
+  margin-top: -1px !important;
+}
+
+.phone-screen .alert-header-stats-icon svg {
+  width: 15px !important;
+  height: 15px !important;
 }
 
 .phone-screen .alert-header-stats-icon-selected {
-  border-color: #e11d48;
-  background: #fff1f2;
-  color: #be123c;
+  border-color: #e11d48 !important;
+  background: #fff1f2 !important;
+  color: #e11d48 !important;
 }
 
 .phone-screen .alert-header-stats-icon span {
@@ -8202,20 +8252,21 @@ h2 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   overflow: hidden;
-  border: 1px solid #d9dde5;
-  border-radius: 12px;
-  background: #ffffff;
+  border: 1px solid #d9e0e8;
+  border-radius: 16px;
+  background: #f8fafc;
 }
 
 .phone-screen .notification-period-button {
-  min-height: 44px;
+  min-height: 42px;
   border: 0;
   border-right: 1px solid #e5e7eb;
   background: #ffffff;
-  color: #111827;
+  color: #374151;
   font: inherit;
-  font-size: 0.86rem;
-  font-weight: 600;
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1;
 }
 
 .phone-screen .notification-period-button:last-child {
@@ -8223,8 +8274,9 @@ h2 {
 }
 
 .phone-screen .notification-period-button.active {
-  background: #e11d48;
-  color: #ffffff;
+  background: #ffe4e6;
+  color: #e11d48;
+  box-shadow: inset 0 0 0 1px #f7b8c5;
 }
 
 .phone-screen .notification-summary-grid {
@@ -8247,8 +8299,8 @@ h2 {
   grid-template-columns: 46px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
-  min-height: 96px;
-  padding: 13px;
+  min-height: 88px;
+  padding: 14px;
 }
 
 .phone-screen .stats-summary-icon,
@@ -8266,17 +8318,17 @@ h2 {
 
 .phone-screen .stats-summary-card p {
   margin: 0 0 4px;
-  color: #374151;
-  font-size: 0.78rem;
-  font-weight: 600;
-  line-height: 1.35;
+  color: #6b7280;
+  font-size: 0.74rem;
+  font-weight: 430;
+  line-height: 1.4;
 }
 
 .phone-screen .stats-summary-card strong {
   color: #111827;
-  font-size: 1.38rem;
-  font-weight: 700;
-  line-height: 1.15;
+  font-size: 1.08rem;
+  font-weight: 520;
+  line-height: 1.22;
   word-break: keep-all;
   font-variant-numeric: tabular-nums;
 }
@@ -8287,7 +8339,7 @@ h2 {
 
 .phone-screen .stats-report-card {
   display: grid;
-  gap: 16px;
+  gap: 14px;
   padding: 16px 14px;
 }
 
@@ -8300,22 +8352,22 @@ h2 {
 
 .phone-screen .stats-report-header h2 {
   color: #111827;
-  font-size: 1rem;
-  font-weight: 700;
-  line-height: 1.3;
+  font-size: 0.98rem;
+  font-weight: 520;
+  line-height: 1.34;
 }
 
 .phone-screen .stats-report-header > span {
   display: inline-flex;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   align-items: center;
   justify-content: center;
   border: 1px solid #cbd5e1;
   border-radius: 50%;
   color: #94a3b8;
-  font-size: 0.78rem;
-  font-weight: 700;
+  font-size: 0.72rem;
+  font-weight: 520;
 }
 
 .phone-screen .time-alert-chart {
@@ -8340,9 +8392,9 @@ h2 {
 }
 
 .phone-screen .time-alert-value {
-  color: #374151;
+  color: #6b7280;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 520;
 }
 
 .phone-screen .time-alert-bar {
@@ -8354,9 +8406,9 @@ h2 {
 }
 
 .phone-screen .time-alert-label {
-  color: #4b5563;
+  color: #6b7280;
   font-size: 0.68rem;
-  font-weight: 600;
+  font-weight: 430;
   line-height: 1.25;
   text-align: center;
   word-break: keep-all;
@@ -8378,7 +8430,7 @@ h2 {
 .phone-screen .device-usage-name {
   color: #111827;
   font-size: 0.82rem;
-  font-weight: 600;
+  font-weight: 520;
   line-height: 1.25;
 }
 
@@ -8402,7 +8454,7 @@ h2 {
 .phone-screen .device-usage-row strong {
   color: #111827;
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 520;
   text-align: right;
 }
 
@@ -8448,8 +8500,8 @@ h2 {
   position: relative;
   z-index: 1;
   color: #111827;
-  font-size: 1rem;
-  font-weight: 700;
+  font-size: 0.96rem;
+  font-weight: 520;
 }
 
 .phone-screen .alert-ratio-list {
@@ -8471,15 +8523,15 @@ h2 {
 }
 
 .phone-screen .alert-ratio-item p {
-  color: #374151;
+  color: #6b7280;
   font-size: 0.82rem;
-  font-weight: 600;
+  font-weight: 430;
 }
 
 .phone-screen .alert-ratio-item strong {
   color: #111827;
-  font-size: 0.92rem;
-  font-weight: 700;
+  font-size: 0.88rem;
+  font-weight: 520;
 }
 
 .phone-screen .device-alert-table {
@@ -8494,7 +8546,7 @@ h2 {
   gap: 5px;
   min-height: 48px;
   border-bottom: 1px solid #e5e7eb;
-  color: #374151;
+  color: #6b7280;
   font-size: 0.76rem;
 }
 
@@ -8504,9 +8556,9 @@ h2 {
 
 .phone-screen .device-alert-row.header {
   min-height: 34px;
-  color: #4b5563;
+  color: #6b7280;
   font-size: 0.68rem;
-  font-weight: 700;
+  font-weight: 520;
 }
 
 .phone-screen .device-alert-name {
@@ -8515,7 +8567,7 @@ h2 {
   align-items: center;
   gap: 7px;
   color: #111827;
-  font-weight: 600;
+  font-weight: 520;
   line-height: 1.25;
 }
 
@@ -8532,7 +8584,7 @@ h2 {
 
 .phone-screen .device-alert-row strong {
   color: #e11d48;
-  font-weight: 700;
+  font-weight: 520;
 }
 
 .phone-screen .device-alert-row strong.danger {
@@ -8549,7 +8601,7 @@ h2 {
   gap: 14px;
   border-color: #fecdd3;
   padding: 18px 16px;
-  background: linear-gradient(135deg, #fff7f9 0%, #ffffff 100%);
+  background: #ffffff;
 }
 
 .phone-screen .ai-insight-icon {
@@ -8579,8 +8631,8 @@ h2 {
 
 .phone-screen .ai-insight-heading strong {
   color: #111827;
-  font-size: 1.08rem;
-  font-weight: 700;
+  font-size: 0.98rem;
+  font-weight: 520;
 }
 
 .phone-screen .ai-insight-heading span {
@@ -8591,15 +8643,15 @@ h2 {
   padding: 0 10px;
   background: #ffe4e6;
   color: #e11d48;
-  font-size: 0.74rem;
-  font-weight: 700;
+  font-size: 0.72rem;
+  font-weight: 520;
 }
 
 .phone-screen .ai-insight-card p {
-  color: #1f2937;
-  font-size: 0.88rem;
-  font-weight: 430;
-  line-height: 1.65;
+  color: #6b7280;
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.56;
   word-break: keep-all;
 }
 
@@ -8681,4 +8733,123 @@ h2 {
   40% {
     opacity: 1;
   }
+}
+
+.phone-screen.home-screen.guardian-screen.app-screen .home-header {
+  padding: 22px 20px 4px !important;
+}
+
+.phone-screen.home-screen.guardian-screen.app-screen .app-content {
+  padding: 6px 18px 40px !important;
+}
+
+.phone-screen.guardian-screen .guardian-content {
+  display: grid;
+  gap: 11px;
+}
+
+.phone-screen.guardian-screen .guardian-home-status-card,
+.phone-screen.guardian-screen .guardian-home-emergency-card,
+.phone-screen.guardian-screen .guardian-home-alert-card,
+.phone-screen.guardian-screen .guardian-home-history-card,
+.phone-screen.guardian-screen .guardian-home-action-card,
+.phone-screen.guardian-screen .guardian-home-session-card {
+  gap: 11px;
+}
+
+.phone-screen.guardian-screen .guardian-home-copy,
+.phone-screen.guardian-screen .guardian-refresh-note {
+  margin-top: 6px !important;
+  padding: 0 !important;
+  color: #6b7280 !important;
+  font-size: 13.12px !important;
+  font-weight: 400 !important;
+  line-height: 1.56 !important;
+}
+
+.phone-screen.guardian-screen .guardian-refresh-note.error,
+.phone-screen.guardian-screen .guardian-loading-error {
+  color: #be123c !important;
+}
+
+.phone-screen.guardian-screen .guardian-home-contact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.phone-screen.guardian-screen .guardian-home-script-box {
+  display: grid;
+  gap: 9px;
+  padding: 16px;
+  border: 1px solid #eef2f7;
+  border-radius: 20px;
+  background: #fafbfc;
+}
+
+.phone-screen.guardian-screen .guardian-home-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.phone-screen.guardian-screen .guardian-home-detail-grid div {
+  padding: 13px 14px;
+  border: 1px solid #eef2f7;
+  border-radius: 18px;
+  background: #fafbfc;
+}
+
+.phone-screen.guardian-screen .guardian-home-detail-grid dt {
+  color: #6b7280;
+  font-size: 0.74rem;
+  font-weight: 430;
+  line-height: 1.4;
+}
+
+.phone-screen.guardian-screen .guardian-home-detail-grid dd {
+  margin: 6px 0 0;
+  color: #172033;
+  font-size: 0.98rem;
+  font-weight: 520;
+  line-height: 1.34;
+}
+
+.phone-screen.guardian-screen .guardian-event-list {
+  display: grid;
+  gap: 10px;
+}
+
+.phone-screen.guardian-screen .guardian-event-item {
+  display: grid;
+  gap: 4px;
+  padding: 13px 14px;
+  border: 1px solid #eef2f7;
+  border-radius: 18px;
+  background: #fafbfc;
+  box-shadow: none;
+}
+
+.phone-screen.guardian-screen .guardian-event-item strong {
+  color: #172033;
+  font-size: 0.98rem;
+  font-weight: 520;
+  line-height: 1.34;
+}
+
+.phone-screen.guardian-screen .guardian-event-item span {
+  color: #6b7280;
+  font-size: 13.12px;
+  font-weight: 400;
+  line-height: 1.56;
+}
+
+.phone-screen.guardian-screen .guardian-loading-screen .home-loading-group {
+  gap: 16px;
+}
+
+.phone-screen.guardian-screen .guardian-loading-action {
+  margin-top: 2px;
 }
