@@ -1,5 +1,4 @@
 const DEFAULT_CONTEXT_AI_BASE_URL = 'http://127.0.0.1:8000'
-const DEMO_ALERT_ID = 990001
 
 const severityRank = {
   LOW: 1,
@@ -59,11 +58,6 @@ async function requestContextJudgment(alert, summary) {
 }
 
 function selectContextSourceAlerts(alerts) {
-  const demoAlert = alerts.find((alert) => alert?.alertId === DEMO_ALERT_ID && alert.status !== 'CONFIRMED')
-  if (demoAlert) {
-    return [demoAlert]
-  }
-
   return alerts
     .filter((alert) => alert && alert.status !== 'CONFIRMED')
     .sort((left, right) => {

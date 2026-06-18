@@ -2,7 +2,6 @@ import { apiRequest } from './apiClient'
 import { mockHomeSummary } from '../mocks/homeMock'
 import { mockAppPreview, resetMockDevices } from '../mocks/appPreviewMock'
 import { getAlerts } from './alertService'
-import { applyContextAiDemoAlert } from './contextAiDemoAlert'
 import { getContextSafetyStatus } from './contextAiService'
 import { getDevices } from './deviceService'
 
@@ -27,8 +26,6 @@ export async function getAppPreview() {
   } catch {
     // Keep the preview usable while the backend alert API is unavailable.
   }
-
-  preview.alerts = applyContextAiDemoAlert(preview.alerts)
 
   try {
     const devices = await getDevices()

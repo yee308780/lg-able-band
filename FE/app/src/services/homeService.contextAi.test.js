@@ -27,7 +27,7 @@ const alerts = [
     severity: 'HIGH',
     title: 'LG electric range warning',
     message: 'The range has been on for a long time.',
-    deviceName: 'LG 전기레인지',
+    deviceName: 'LG electric range',
     device: {
       type: 'RANGE',
     },
@@ -79,37 +79,6 @@ describe('applyContextAiSafetyStatus', () => {
     await expect(applyContextAiSafetyStatus(summary, alerts)).resolves.toBe(summary)
   })
 
-  it('uses the selected demo alert before higher-severity real alerts', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      jsonResponse({
-        safetyStatusLevel: 'CAUTION',
-        message: 'Indoor air quality caution was detected.',
-      }),
-    )
-
-    await applyContextAiSafetyStatus(summary, [
-      {
-        alertId: 990001,
-        type: 'DANGER',
-        severity: 'MEDIUM',
-        title: 'Context AI demo caution',
-        deviceType: 'AIR_SENSOR',
-        eventType: 'AIR_QUALITY_BAD',
-        locationName: '거실',
-        status: 'UNREAD',
-      },
-      ...alerts,
-    ])
-
-    const requestBody = JSON.parse(fetchSpy.mock.calls[0][1].body)
-    expect(fetchSpy).toHaveBeenCalledTimes(1)
-    expect(requestBody).toMatchObject({
-      deviceType: 'AIR_SENSOR',
-      eventType: 'AIR_QUALITY_BAD',
-      locationName: '거실',
-    })
-  })
-
   it('combines all unconfirmed alert judgments and keeps the highest AI safety level', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(jsonResponse({
@@ -133,7 +102,7 @@ describe('applyContextAiSafetyStatus', () => {
         title: 'Air quality warning',
         deviceType: 'AIR_SENSOR',
         eventType: 'AIR_QUALITY_BAD',
-        locationName: '거실',
+        locationName: 'Living room',
         status: 'UNREAD',
       },
       {
