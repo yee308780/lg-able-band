@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { vi } from 'vitest'
 import { DevicesTab } from './DevicesTab'
 
@@ -85,7 +86,97 @@ describe('DevicesTab', () => {
     expect(screen.getAllByText('안방').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByRole('status').textContent).toContain('TV 위치를 안방으로 저장했습니다.')
   })
+
+  it('deletes the selected device after a second confirmation click', async () => {
+    const user = userEvent.setup()
+    const devices = [
+      {
+        deviceId: 2,
+        name: 'TV',
+        vendorDeviceId: 'thinq-tv-001',
+        type: 'TV',
+        room: '거실',
+        connectionStatus: 'CONNECTED',
+      },
+      {
+        deviceId: 1,
+        name: '세탁기',
+        vendorDeviceId: 'thinq-washer-001',
+        type: 'WASHER',
+        room: '세탁실',
+        connectionStatus: 'CONNECTED',
+      },
+    ]
+
+    render(<DevicesTab devices={devices} uwb={{}} />)
+
+    await user.click(screen.getByRole('button', { name: 'TV 삭제' }))
+    expect(screen.getByRole('status').textContent).toContain(
+      'TV 삭제를 한 번 더 눌러 확인해 주세요.',
+    )
+
+    await user.click(screen.getByRole('button', { name: 'TV 삭제 확인' }))
+
+    await waitFor(() => {
+      expect(findDeleteDeviceCall()).toBeTruthy()
+    })
+    expect(screen.queryByRole('button', { name: 'TV 관리 열기' })).toBeNull()
+    expect(screen.getByRole('button', { name: '세탁기 관리 열기' })).toBeTruthy()
+    expect(screen.getByRole('status').textContent).toContain('TV 연결을 해제했습니다.')
+  })
+
+  it('keeps a deleted device removed after the tab remounts', async () => {
+    const user = userEvent.setup()
+
+    render(<DevicePersistenceHarness />)
+
+    await user.click(screen.getByRole('button', { name: 'TV 삭제' }))
+    await user.click(screen.getByRole('button', { name: 'TV 삭제 확인' }))
+
+    await waitFor(() => {
+      expect(findDeleteDeviceCall()).toBeTruthy()
+    })
+
+    await user.click(screen.getByRole('button', { name: '기기 탭 숨기기' }))
+    await user.click(screen.getByRole('button', { name: '기기 탭 다시 열기' }))
+
+    expect(screen.queryByRole('button', { name: 'TV 관리 열기' })).toBeNull()
+    expect(screen.getByRole('button', { name: '세탁기 관리 열기' })).toBeTruthy()
+  })
 })
+
+function DevicePersistenceHarness() {
+  const [isVisible, setIsVisible] = useState(true)
+  const [devices, setDevices] = useState([
+    {
+      deviceId: 2,
+      name: 'TV',
+      vendorDeviceId: 'thinq-tv-001',
+      type: 'TV',
+      room: '거실',
+      connectionStatus: 'CONNECTED',
+    },
+    {
+      deviceId: 1,
+      name: '세탁기',
+      vendorDeviceId: 'thinq-washer-001',
+      type: 'WASHER',
+      room: '세탁실',
+      connectionStatus: 'CONNECTED',
+    },
+  ])
+
+  return (
+    <div>
+      <button type="button" onClick={() => setIsVisible((current) => !current)}>
+        {isVisible ? '기기 탭 숨기기' : '기기 탭 다시 열기'}
+      </button>
+      {isVisible ? (
+        <DevicesTab devices={devices} onDevicesChange={setDevices} uwb={{}} />
+      ) : null}
+    </div>
+  )
+}
 
 async function mockFetch(input, init = {}) {
   const url = typeof input === 'string' ? input : input.url
@@ -119,6 +210,10 @@ async function mockFetch(input, init = {}) {
     })
   }
 
+  if (url === `${API_BASE_URL}/api/devices/2` && method === 'DELETE') {
+    return new Response(null, { status: 204 })
+  }
+
   return jsonResponse({ message: 'not found' }, { status: 404 })
 }
 
@@ -131,6 +226,12 @@ function findCreateDeviceCall() {
 function findUpdateDeviceCall() {
   return globalThis.fetch.mock.calls.find(([url, init = {}]) => {
     return url === `${API_BASE_URL}/api/devices/2` && init.method === 'PATCH'
+  })
+}
+
+function findDeleteDeviceCall() {
+  return globalThis.fetch.mock.calls.find(([url, init = {}]) => {
+    return url === `${API_BASE_URL}/api/devices/2` && init.method === 'DELETE'
   })
 }
 

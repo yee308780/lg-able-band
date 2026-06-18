@@ -18,3 +18,9 @@ export async function updateDevice(deviceId, device) {
     body: device,
   })
 }
+
+export async function deleteDevice(deviceId) {
+  return apiRequest(`/api/devices/${encodeURIComponent(deviceId)}`, {
+    method: 'DELETE',
+  })
+}

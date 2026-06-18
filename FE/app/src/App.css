@@ -8942,3 +8942,28 @@ h2 {
 .phone-screen.guardian-screen .guardian-loading-action {
   margin-top: 2px;
 }
+
+.device-manager-action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.device-manager-action-grid .full-button {
+  margin-top: 2px;
+}
+
+.device-delete-button,
+.phone-screen .device-delete-button {
+  border-color: #f4cfd8;
+  background: #fff4f7;
+  color: #b42343;
+}
+
+.device-delete-button.confirming,
+.phone-screen .device-delete-button.confirming {
+  border-color: #be123c;
+  background: #be123c;
+  color: #ffffff;
+  box-shadow: 0 10px 22px rgba(190, 18, 60, 0.18);
+}

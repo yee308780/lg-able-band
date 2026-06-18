@@ -267,6 +267,23 @@ export function HomeScreen({ session, onLogout }) {
     })
   }
 
+  function handleDevicesChange(nextDevices) {
+    setHomeState((currentState) => {
+      if (!currentState.preview) {
+        return currentState
+      }
+
+      return {
+        ...currentState,
+        summary: updateDeviceSummary(currentState.summary, nextDevices),
+        preview: {
+          ...currentState.preview,
+          devices: nextDevices,
+        },
+      }
+    })
+  }
+
   async function handleAccessibilityChange(nextSettings) {
     const accessibilityType =
       sessionAccessibilityType || homeState.summary?.user?.accessibilityType || 'VISUAL'
@@ -413,6 +430,7 @@ export function HomeScreen({ session, onLogout }) {
           <DevicesTab
             devices={preview.devices}
             maxDeviceCount={MAX_DEVICE_COUNT}
+            onDevicesChange={handleDevicesChange}
             uwb={preview.uwb}
           />
         ) : null}
@@ -1666,6 +1684,31 @@ function GuardianToast({ message }) {
       </p>
     </div>
   )
+}
+
+function updateDeviceSummary(summary, devices) {
+  if (!summary) {
+    return summary
+  }
+
+  const connectedDevices = devices.filter((device) => device.connectionStatus === 'CONNECTED')
+  const warningDevices = devices.filter((device) =>
+    ['WARNING', 'ERROR'].includes(device.connectionStatus),
+  )
+  const locationSupportedDevices = devices.filter((device) =>
+    Boolean(device.locationSupported ?? device.uwbSupported),
+  )
+
+  return {
+    ...summary,
+    deviceSummary: {
+      ...summary.deviceSummary,
+      totalCount: devices.length,
+      connectedCount: connectedDevices.length,
+      warningCount: warningDevices.length,
+      uwbSupportedCount: locationSupportedDevices.length,
+    },
+  }
 }
 
 function normalizeGuardianForView(guardian) {

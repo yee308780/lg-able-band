@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
 import { useBleProximityGuide } from '../features/ble/useBleProximityGuide'
-import { createDevice, getDevices, updateDevice } from '../services/deviceService'
+import { createDevice, deleteDevice, getDevices, updateDevice } from '../services/deviceService'
 
 function scrollAppContentToTop() {
   const appContent = document.querySelector('.app-content')
@@ -99,7 +99,7 @@ const deviceCatalog = [
   },
 ]
 
-export function DevicesTab({ devices = [], uwb }) {
+export function DevicesTab({ devices = [], uwb, onDevicesChange }) {
   const catalogByType = useMemo(
     () => Object.fromEntries(deviceCatalog.map((item) => [item.type, item])),
     [],
@@ -125,6 +125,11 @@ export function DevicesTab({ devices = [], uwb }) {
     error: '',
   })
   const [editingLocationDeviceId, setEditingLocationDeviceId] = useState(null)
+  const [deleteState, setDeleteState] = useState({
+    confirmingDeviceId: null,
+    deletingDeviceId: null,
+    error: '',
+  })
 
   const bleGuide = useBleProximityGuide()
 
@@ -136,6 +141,12 @@ export function DevicesTab({ devices = [], uwb }) {
   const selectedLocationLabel = selectedDevice?.room || '위치 미설정'
   const isLocationEditorOpen = Boolean(
     selectedDevice && editingLocationDeviceId === selectedDevice.deviceId,
+  )
+  const isSelectedDeviceDeleteConfirming = Boolean(
+    selectedDevice && deleteState.confirmingDeviceId === selectedDevice.deviceId,
+  )
+  const isSelectedDeviceDeleting = Boolean(
+    selectedDevice && deleteState.deletingDeviceId === selectedDevice.deviceId,
   )
 
   const uwbTarget = getGuideTarget(connectedDevices, selectedDevice, uwb)
@@ -166,6 +177,7 @@ export function DevicesTab({ devices = [], uwb }) {
   function handleToggleDevicePicker() {
     setIsDevicePickerOpen((current) => !current)
     setConnectionMessage('')
+    setDeleteState({ confirmingDeviceId: null, deletingDeviceId: null, error: '' })
   }
 
   function handleSelectConnectedDevice(deviceId) {
@@ -173,6 +185,7 @@ export function DevicesTab({ devices = [], uwb }) {
     setConnectionMessage('')
     setLocationSaveState({ saving: false, error: '' })
     setEditingLocationDeviceId(null)
+    setDeleteState({ confirmingDeviceId: null, deletingDeviceId: null, error: '' })
   }
 
   function handleRefreshSelectedDevice() {
@@ -206,6 +219,7 @@ export function DevicesTab({ devices = [], uwb }) {
       [selectedDevice.deviceId]: selectedDevice.room || '',
     }))
     setLocationSaveState({ saving: false, error: '' })
+    setDeleteState({ confirmingDeviceId: null, deletingDeviceId: null, error: '' })
     setEditingLocationDeviceId(selectedDevice.deviceId)
   }
 
@@ -231,6 +245,7 @@ export function DevicesTab({ devices = [], uwb }) {
       remoteEnabled: template.remoteEnabled,
     })
     setSubmitState({ saving: false, error: '' })
+    setDeleteState({ confirmingDeviceId: null, deletingDeviceId: null, error: '' })
     setScreenMode('create')
   }
 
@@ -303,10 +318,12 @@ export function DevicesTab({ devices = [], uwb }) {
         },
         catalogByType,
       )
-      setConnectedDevices((current) => [
+      const nextDevices = [
         nextDevice,
-        ...current.filter((item) => item.deviceId !== nextDevice.deviceId),
-      ])
+        ...connectedDevices.filter((item) => item.deviceId !== nextDevice.deviceId),
+      ]
+      setConnectedDevices(nextDevices)
+      onDevicesChange?.(nextDevices)
       setSelectedDeviceId(nextDevice.deviceId)
       setIsDevicePickerOpen(false)
       setScreenMode('list')
@@ -351,11 +368,11 @@ export function DevicesTab({ devices = [], uwb }) {
         catalogByType,
       )
 
-      setConnectedDevices((currentDevices) =>
-        currentDevices.map((device) =>
-          device.deviceId === selectedDevice.deviceId ? nextDevice : device,
-        ),
+      const nextDevices = connectedDevices.map((device) =>
+        device.deviceId === selectedDevice.deviceId ? nextDevice : device,
       )
+      setConnectedDevices(nextDevices)
+      onDevicesChange?.(nextDevices)
       setLocationDraftByDeviceId((currentDrafts) => ({
         ...currentDrafts,
         [nextDevice.deviceId]: nextDevice.room,
@@ -371,11 +388,65 @@ export function DevicesTab({ devices = [], uwb }) {
     }
   }
 
+  async function handleDeleteSelectedDevice() {
+    if (!selectedDevice) {
+      return
+    }
+
+    if (!isSelectedDeviceDeleteConfirming) {
+      setDeleteState({
+        confirmingDeviceId: selectedDevice.deviceId,
+        deletingDeviceId: null,
+        error: '',
+      })
+      setConnectionMessage(`${selectedDevice.name} 삭제를 한 번 더 눌러 확인해 주세요.`)
+      return
+    }
+
+    setDeleteState({
+      confirmingDeviceId: selectedDevice.deviceId,
+      deletingDeviceId: selectedDevice.deviceId,
+      error: '',
+    })
+
+    try {
+      await deleteDevice(selectedDevice.deviceId)
+
+      if (bleGuide.isActive && bleGuide.targetName === selectedDevice.name) {
+        bleGuide.stopGuide()
+      }
+
+      const nextDevices = connectedDevices.filter(
+        (device) => device.deviceId !== selectedDevice.deviceId,
+      )
+
+      setConnectedDevices(nextDevices)
+      onDevicesChange?.(nextDevices)
+      setSelectedDeviceId(nextDevices[0]?.deviceId ?? null)
+      setLocationDraftByDeviceId((currentDrafts) => {
+        const nextDrafts = { ...currentDrafts }
+        delete nextDrafts[selectedDevice.deviceId]
+        return nextDrafts
+      })
+      setEditingLocationDeviceId(null)
+      setIsDevicePickerOpen(false)
+      setDeleteState({ confirmingDeviceId: null, deletingDeviceId: null, error: '' })
+      setConnectionMessage(`${selectedDevice.name} 연결을 해제했습니다.`)
+    } catch (error) {
+      setDeleteState({
+        confirmingDeviceId: selectedDevice.deviceId,
+        deletingDeviceId: null,
+        error: error.message || '가전 삭제에 실패했습니다.',
+      })
+    }
+  }
+
   async function syncConnectedDevices() {
     try {
       const latestDevices = await getDevices()
       const nextDevices = latestDevices.map((device) => enrichDevice(device, catalogByType))
       setConnectedDevices(nextDevices)
+      onDevicesChange?.(nextDevices)
       setSelectedDeviceId((currentDeviceId) => {
         if (nextDevices.some((device) => device.deviceId === currentDeviceId)) {
           return currentDeviceId
@@ -729,14 +800,42 @@ export function DevicesTab({ devices = [], uwb }) {
               </div>
             </div>
           ) : (
-            <button
-              className="secondary-button full-button device-location-edit-button"
-              type="button"
-              onClick={handleStartLocationEdit}
-            >
-              가전 위치 수정
-            </button>
+            <div className="device-manager-action-grid">
+              <button
+                className="secondary-button full-button device-location-edit-button"
+                type="button"
+                onClick={handleStartLocationEdit}
+              >
+                가전 위치 수정
+              </button>
+              <button
+                className={
+                  isSelectedDeviceDeleteConfirming
+                    ? 'secondary-button full-button device-delete-button confirming'
+                    : 'secondary-button full-button device-delete-button'
+                }
+                type="button"
+                aria-label={
+                  isSelectedDeviceDeleteConfirming
+                    ? `${selectedDevice.name} 삭제 확인`
+                    : `${selectedDevice.name} 삭제`
+                }
+                disabled={isSelectedDeviceDeleting}
+                onClick={handleDeleteSelectedDevice}
+              >
+                {isSelectedDeviceDeleting
+                  ? '삭제 중...'
+                  : isSelectedDeviceDeleteConfirming
+                    ? '삭제 확인'
+                    : '삭제'}
+              </button>
+            </div>
           )}
+          {deleteState.error ? (
+            <p className="form-error" role="alert">
+              {deleteState.error}
+            </p>
+          ) : null}
           <div className="device-feature-list" aria-label={`${selectedDevice.name} 관리 기능`}>
             {selectedDevice.management.map((feature) => (
               <span key={feature}>{feature}</span>
