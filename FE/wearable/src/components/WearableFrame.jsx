@@ -1,7 +1,9 @@
-export function WearableFrame({ children }) {
+export function WearableFrame({ children, screenClassName = '' }) {
   return (
-    <section className="wearable-shell" aria-label="4인치 웨어러블 화면">
-      <div className="wearable-screen">{children}</div>
+    <section className="wearable-shell" aria-label="wearable screen">
+      <div className={screenClassName ? `wearable-screen ${screenClassName}` : 'wearable-screen'}>
+        {children}
+      </div>
     </section>
   )
 }

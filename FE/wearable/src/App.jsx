@@ -635,7 +635,7 @@ function App() {
 
   return (
     <main className="app-root">
-      <WearableFrame>
+      <WearableFrame screenClassName={isPaired ? 'wearable-screen-with-mode-switch' : ''}>
         {isPaired ? (
           <ModeSwitch
             activeMode={mode === 'deviceSelect' ? 'uwb' : mode}

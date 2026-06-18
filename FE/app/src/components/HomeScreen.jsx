@@ -251,24 +251,16 @@ export function HomeScreen({ session, onLogout }) {
             <h1 id="home-title">{displayTitle}</h1>
             {activeTab === 'alerts' ? (
               <button
-                className={
-                  alertsScreen === 'stats'
-                    ? 'alert-header-stats-icon alert-header-stats-icon-selected'
-                    : 'alert-header-stats-icon'
-                }
+                className="alert-header-stats-icon"
                 type="button"
                 aria-label="알림 통계 보기"
-                aria-pressed={alertsScreen === 'stats'}
-                onClick={() =>
-                  setAlertsScreen((currentScreen) => (currentScreen === 'stats' ? 'list' : 'stats'))
-                }
+                onClick={() => setAlertsScreen('stats')}
               >
                 <svg viewBox="0 0 24 24" focusable="false">
                   <path d="M5 19V10" />
                   <path d="M12 19V5" />
                   <path d="M19 19v-7" />
                 </svg>
-                <span>통계</span>
               </button>
             ) : null}
           </div>
@@ -292,6 +284,7 @@ export function HomeScreen({ session, onLogout }) {
             accessibilityType={session.userProfile?.accessibilityType || 'VISUAL'}
             alerts={preview.alerts}
             alertView={alertsScreen}
+            onCloseStats={() => setAlertsScreen('list')}
           />
         ) : null}
         {activeTab === 'devices' ? (
@@ -694,48 +687,102 @@ function WearablePairingScannerScreen({ onBack }) {
 }
 
 async function openCameraStream(video) {
-  const primaryConstraints = await getPreferredCameraConstraints()
-  let stream = await navigator.mediaDevices.getUserMedia(primaryConstraints)
+  const constraintsCandidates = await getPreferredCameraConstraints()
+  let lastError = null
 
-  if (!video) {
-    return { stream }
+  for (const constraints of constraintsCandidates) {
+    let stream = null
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints)
+
+      if (!video) {
+        return { stream }
+      }
+
+      await attachVideoStream(video, stream)
+      const hasVisibleFrame = await waitForVisibleVideoFrame(video)
+      if (hasVisibleFrame) {
+        return { stream }
+      }
+
+      stopMediaStream(stream)
+      if (video) {
+        video.srcObject = null
+      }
+    } catch (error) {
+      lastError = error
+      stopMediaStream(stream)
+      if (video) {
+        video.srcObject = null
+      }
+    }
   }
 
-  await attachVideoStream(video, stream)
-  const hasVisibleFrame = await waitForVisibleVideoFrame(video)
-  if (hasVisibleFrame) {
-    return { stream }
-  }
-
-  stopMediaStream(stream)
-  const fallbackConstraints = { video: { facingMode: { ideal: 'environment' } } }
-  stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints)
-  await attachVideoStream(video, stream)
-  const fallbackHasVisibleFrame = await waitForVisibleVideoFrame(video)
-
-  if (!fallbackHasVisibleFrame) {
-    stopMediaStream(stream)
-    throw new Error('카메라는 켜졌지만 화면이 들어오지 않습니다. 다른 앱에서 카메라를 사용 중인지 확인해주세요.')
-  }
-
-  return { stream }
+  throw lastError || new Error('카메라는 켜졌지만 화면이 들어오지 않습니다. 다른 앱에서 카메라를 사용 중인지 확인해주세요.')
 }
 
 async function getPreferredCameraConstraints() {
   const devices = await listVideoInputDevices()
-  const physicalCamera = devices.find((device) => !isVirtualCamera(device))
+  const physicalCameras = devices.filter((device) => !isVirtualCamera(device))
+  const rearCamera = physicalCameras.find(isRearCamera)
+  const frontCamera = physicalCameras.find(isFrontCamera)
+  const fallbackPhysicalCamera = physicalCameras.find(
+    (device) => device.deviceId !== rearCamera?.deviceId && device.deviceId !== frontCamera?.deviceId,
+  )
 
-  if (physicalCamera?.deviceId) {
-    return {
+  const candidates = [
+    {
+      video: {
+        facingMode: { exact: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+    },
+    {
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+    },
+  ]
+
+  if (rearCamera?.deviceId) {
+    candidates.unshift({
       video: {
         deviceId: {
-          exact: physicalCamera.deviceId,
+          exact: rearCamera.deviceId,
         },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
       },
-    }
+    })
   }
 
-  return { video: true }
+  if (fallbackPhysicalCamera?.deviceId) {
+    candidates.push({
+      video: {
+        deviceId: {
+          exact: fallbackPhysicalCamera.deviceId,
+        },
+      },
+    })
+  }
+
+  if (frontCamera?.deviceId) {
+    candidates.push({
+      video: {
+        deviceId: {
+          exact: frontCamera.deviceId,
+        },
+      },
+    })
+  }
+
+  candidates.push({ video: true })
+
+  return candidates
 }
 
 async function listVideoInputDevices() {
@@ -749,6 +796,14 @@ async function listVideoInputDevices() {
 
 function isVirtualCamera(device) {
   return /virtual|obs|snap|xsplit|manycam|mirametrix/i.test(device.label || '')
+}
+
+function isRearCamera(device) {
+  return /back|rear|environment|후면|뒤/i.test(device.label || '')
+}
+
+function isFrontCamera(device) {
+  return /front|user|facetime|전면|앞/i.test(device.label || '')
 }
 
 async function attachVideoStream(video, stream) {

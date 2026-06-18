@@ -2062,3 +2062,836 @@ button:focus-visible {
   width: 204px;
   height: 204px;
 }
+
+/* Final wearable alignment with app UI */
+.app-root {
+  background:
+    radial-gradient(circle at top center, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0) 28%),
+    linear-gradient(180deg, #f7f8fa 0%, #eef1f4 100%);
+}
+
+.wearable-shell {
+  width: min(calc(100vw - 16px), 452px, 51vh);
+  aspect-ratio: 452 / 884;
+  border-width: 12px;
+  border-radius: 30px;
+  border-color: #111827;
+  background: #111827;
+  box-shadow: 0 22px 50px rgba(15, 23, 42, 0.22);
+}
+
+.wearable-screen {
+  align-items: stretch !important;
+  row-gap: 10px;
+  border-radius: 24px;
+  padding: 12px 10px 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7f8fa 100%);
+}
+
+.wearable-screen > section {
+  width: 100%;
+}
+
+.mode-switch {
+  position: relative;
+  top: auto;
+  right: auto;
+  left: auto;
+  justify-self: stretch;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: none;
+}
+
+.mode-button {
+  min-width: 0;
+  min-height: 30px;
+  border-radius: 12px;
+  font-size: 0.72rem;
+  font-weight: 520;
+  letter-spacing: -0.01em;
+}
+
+.pairing-screen,
+.alert-screen,
+.uwb-screen,
+.emergency-screen,
+.state-screen {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  gap: 12px;
+  min-height: 100%;
+}
+
+.device-select-screen {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+  gap: 10px;
+  min-height: 100%;
+}
+
+.pairing-screen {
+  justify-content: center;
+}
+
+.pairing-copy,
+.alert-copy {
+  gap: 8px;
+}
+
+.pairing-copy {
+  justify-items: start;
+  text-align: left;
+}
+
+.device-select-grid {
+  flex: 1 1 auto;
+  align-content: start;
+}
+
+.action-row,
+.alert-pager,
+.live-message,
+.live-status {
+  flex-shrink: 0;
+}
+
+.eyebrow {
+  font-size: 0.72rem;
+  font-weight: 430;
+  color: #7a838f;
+}
+
+h1 {
+  font-size: 1.42rem;
+  line-height: 1.18;
+  font-weight: 520;
+  letter-spacing: -0.02em;
+  color: #172033;
+}
+
+.pairing-copy p:not(.eyebrow),
+.alert-copy p,
+.guide-copy,
+.emergency-copy,
+.screen-message,
+.pairing-state-screen p:not(.eyebrow):not(.pairing-state-icon),
+.device-select-description,
+.guardian-sync-note {
+  font-size: 0.84rem;
+  line-height: 1.54;
+  font-weight: 420;
+}
+
+.screen-topline,
+.alert-topline {
+  align-items: flex-start;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 430;
+}
+
+.qr-panel,
+.compact-meta div,
+.vibration-card,
+.device-select-card,
+.standby-meta div,
+.uwb-main,
+.uwb-distance,
+.vibration-feedback,
+.pairing-state-screen,
+.live-status,
+.live-message,
+.guardian-sync-note,
+.chatbot-panel,
+.voice-chatbot-panel {
+  border-radius: 18px;
+  box-shadow: var(--wearable-shadow-sm);
+}
+
+.qr-panel {
+  grid-template-columns: 1fr;
+  gap: 12px;
+  padding: 14px;
+  justify-items: center;
+}
+
+.qr-code {
+  width: 172px;
+  height: 172px;
+}
+
+.pairing-meta {
+  width: 100%;
+  justify-items: center;
+  text-align: center;
+}
+
+.pairing-meta strong {
+  font-size: 0.96rem;
+  color: var(--wearable-text);
+}
+
+.pairing-status,
+.status-badge {
+  min-height: 28px;
+  padding: 0 11px;
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.compact-meta {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.compact-meta div,
+.standby-meta div {
+  padding: 11px 12px;
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.compact-meta dt,
+.vibration-card span,
+.uwb-distance p,
+.device-select-status,
+.voice-chatbot-answer span,
+.standby-meta dt {
+  font-size: 0.72rem;
+  font-weight: 430;
+}
+
+.compact-meta dd,
+.device-select-name,
+.vibration-card strong,
+.voice-chatbot-answer strong,
+.device-select-header strong,
+.uwb-main strong,
+.uwb-distance strong,
+.standby-meta dd,
+.vibration-feedback strong {
+  font-size: 0.9rem;
+  font-weight: 520;
+}
+
+.compact-meta dd {
+  margin-top: 4px;
+  white-space: normal;
+}
+
+.action-row {
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.primary-action,
+.secondary-action {
+  min-height: 42px;
+  border-radius: 14px;
+  font-size: 0.86rem;
+  font-weight: 520;
+}
+
+.live-status,
+.live-message,
+.guardian-sync-note,
+.chatbot-panel {
+  padding: 8px 10px;
+  font-size: 0.76rem;
+  line-height: 1.48;
+}
+
+.device-select-screen {
+  gap: 10px;
+}
+
+.device-select-header {
+  align-items: end;
+}
+
+.device-select-header h1 {
+  font-size: 1.12rem;
+  line-height: 1.2;
+}
+
+.device-select-header strong {
+  font-size: 0.76rem;
+  font-weight: 430;
+  color: var(--wearable-text-soft);
+}
+
+.device-select-grid {
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.device-select-card {
+  min-height: 108px;
+  gap: 10px;
+  border-radius: 18px;
+  padding: 12px;
+}
+
+.device-select-action {
+  width: 100%;
+}
+
+.uwb-main,
+.uwb-distance {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  justify-items: start;
+  padding: 12px 14px;
+  background: #ffffff;
+}
+
+.uwb-main strong,
+.uwb-distance strong {
+  font-size: 2.2rem;
+  line-height: 0.96;
+  letter-spacing: -0.04em;
+  color: var(--wearable-primary-strong);
+}
+
+.guide-copy {
+  font-size: 0.84rem;
+  line-height: 1.54;
+  font-weight: 420;
+}
+
+.vibration-feedback {
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+}
+
+.vibration-feedback span:not(.vibration-pulse) {
+  font-size: 0.72rem;
+  font-weight: 430;
+}
+
+.vibration-feedback strong {
+  margin-top: 3px;
+}
+
+.standby-meta {
+  gap: 8px;
+}
+
+.voice-chatbot-fab {
+  right: 14px;
+  bottom: 18px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 16px;
+  font-size: 0.9rem;
+  font-weight: 520;
+}
+
+.voice-chatbot-panel {
+  gap: 8px;
+  border-radius: 18px;
+  padding: 8px;
+}
+
+.voice-chatbot-header h2 {
+  font-size: 0.94rem;
+  font-weight: 520;
+}
+
+.wearable-chat-screen {
+  padding: 8px 0 0;
+  background: transparent;
+}
+
+.wearable-chat-content {
+  gap: 8px;
+}
+
+.wearable-chat-header h2 {
+  font-size: 1.04rem;
+  font-weight: 520;
+}
+
+.wearable-chat-header p,
+.wearable-chat-footnote,
+.wearable-chat-guide {
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.wearable-chat-choice,
+.wearable-chat-option,
+.wearable-chat-bottom-action,
+.wearable-chat-app-action,
+.wearable-chat-link,
+.wearable-chat-detail-card {
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+.wearable-chat-choice strong,
+.wearable-chat-option strong,
+.wearable-chat-detail-row strong {
+  font-size: 0.86rem;
+  font-weight: 520;
+}
+
+.wearable-chat-choice small,
+.wearable-chat-detail-row small {
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.pairing-copy,
+.alert-copy,
+.device-select-header,
+.wearable-chat-header {
+  justify-items: center;
+  text-align: center;
+}
+
+.wearable-brand-logo {
+  display: block;
+  width: min(100%, 164px);
+  height: auto;
+}
+
+.pairing-meta,
+.screen-message,
+.guide-copy,
+.device-select-description,
+.emergency-copy,
+.pairing-state-screen,
+.live-status,
+.live-message,
+.guardian-sync-note,
+.voice-chatbot-answer,
+.wearable-chat-guide,
+.wearable-chat-footnote,
+.wearable-chat-choice,
+.wearable-chat-option,
+.wearable-chat-detail-row {
+  text-align: center;
+}
+
+.screen-topline,
+.alert-topline {
+  justify-content: center;
+  text-align: center;
+}
+
+.pairing-meta,
+.compact-meta div,
+.standby-meta div,
+.vibration-card,
+.uwb-main,
+.uwb-distance,
+.vibration-feedback,
+.voice-chatbot-answer {
+  justify-items: center;
+  text-align: center;
+}
+
+.compact-meta dd,
+.standby-meta dd,
+.vibration-feedback strong {
+  text-align: center;
+}
+
+.pairing-state-screen {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 100%;
+  padding: 18px 16px;
+}
+
+.pairing-state-screen .primary-action,
+.pairing-state-screen .secondary-action {
+  width: 100%;
+}
+
+.pairing-state-screen .eyebrow {
+  text-align: center;
+}
+
+.pairing-loading-screen {
+  padding-inline: 10px;
+}
+
+.pairing-loading-copy {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.pairing-loading-copy strong {
+  color: #172033;
+  font-size: 2rem;
+  font-weight: 520;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.pairing-loading-dots {
+  display: inline-flex;
+  justify-content: center;
+  min-height: 28px;
+  margin-top: 10px;
+  color: #e11d48;
+  font-size: 1.52rem;
+  font-weight: 500;
+  letter-spacing: -0.12em;
+  animation: pairingLoadingDots 1.15s ease-in-out infinite;
+}
+
+.pairing-loading-screen .pairing-loading-copy strong:first-child {
+  margin-top: 0;
+}
+
+@keyframes pairingLoadingDots {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: translateY(0);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translateY(1px);
+  }
+}
+
+.device-select-header {
+  display: grid;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+}
+
+.device-select-card {
+  align-items: center;
+  text-align: center;
+}
+
+.device-select-status,
+.device-select-action {
+  justify-self: center;
+}
+
+.uwb-main,
+.uwb-distance,
+.vibration-feedback {
+  align-items: center;
+}
+
+@container wearable (max-width: 380px) {
+  .wearable-screen {
+    padding: 10px 9px 12px;
+  }
+
+  .mode-button {
+    min-height: 28px;
+    font-size: 0.7rem;
+  }
+
+  .qr-code {
+    width: 152px;
+    height: 152px;
+  }
+
+  .uwb-main strong,
+  .uwb-distance strong {
+    font-size: 1.92rem;
+  }
+}
+
+.wearable-screen {
+  grid-template-rows: 1fr !important;
+}
+
+.wearable-screen-with-mode-switch {
+  padding-top: 76px !important;
+}
+
+.mode-switch {
+  position: absolute !important;
+  top: 10px !important;
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%);
+  justify-self: auto !important;
+  width: auto !important;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 60px;
+  padding: 6px 7px;
+  z-index: 5;
+}
+
+.mode-button {
+  flex: 0 0 98px;
+  width: 98px;
+  min-width: 98px;
+  max-width: 98px;
+  min-height: 46px;
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+@container wearable (max-width: 380px) {
+  .wearable-screen-with-mode-switch {
+    padding-top: 70px !important;
+  }
+
+  .mode-switch {
+    top: 8px !important;
+    min-height: 54px;
+    padding: 5px 6px;
+  }
+
+  .mode-button {
+    flex-basis: 90px;
+    width: 90px;
+    min-width: 90px;
+    max-width: 90px;
+    min-height: 42px;
+    font-size: 0.94rem;
+  }
+}
+
+.pairing-screen {
+  gap: 16px;
+}
+
+.qr-panel {
+  gap: 16px;
+  padding: 18px 16px;
+}
+
+.qr-code {
+  width: 224px;
+  height: 224px;
+  max-width: 100%;
+  background: #ffffff;
+  border-radius: 12px;
+}
+
+.pairing-meta {
+  gap: 6px;
+}
+
+@container wearable (max-width: 380px) {
+  .qr-panel {
+    padding: 14px 12px;
+  }
+
+  .qr-code {
+    width: 184px;
+    height: 184px;
+  }
+}
+
+.pairing-loading-screen {
+  justify-content: center !important;
+  align-items: center !important;
+  padding: 18px 12px 14px !important;
+  background:
+    radial-gradient(circle at 50% 28%, rgba(225, 29, 72, 0.08) 0%, rgba(225, 29, 72, 0) 46%),
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.pairing-loading-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  width: 100%;
+  min-height: 100%;
+  text-align: center;
+}
+
+.pairing-loading-logo {
+  width: min(100%, 176px);
+}
+
+.pairing-loading-orbit {
+  position: relative;
+  width: 148px;
+  height: 148px;
+  display: grid;
+  place-items: center;
+}
+
+.pairing-loading-orbit-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 1.5px solid rgba(225, 29, 72, 0.16);
+}
+
+.pairing-loading-orbit-ring-outer {
+  animation: pairingOrbitPulse 1.8s ease-in-out infinite;
+}
+
+.pairing-loading-orbit-ring-middle {
+  inset: 14px;
+  border-color: rgba(225, 29, 72, 0.24);
+  animation: pairingOrbitPulse 1.8s ease-in-out infinite 0.18s;
+}
+
+.pairing-loading-orbit-ring-inner {
+  inset: 28px;
+  border-color: rgba(225, 29, 72, 0.34);
+  animation: pairingOrbitPulse 1.8s ease-in-out infinite 0.36s;
+}
+
+.pairing-loading-orbit-core {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #f43f5e 0%, #e11d48 100%);
+  box-shadow: 0 8px 18px rgba(225, 29, 72, 0.26);
+}
+
+.pairing-loading-copy {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.pairing-loading-copy strong {
+  color: #172033;
+  font-size: 1.46rem;
+  font-weight: 560;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+.pairing-loading-copy p {
+  color: #6b7280;
+  font-size: 0.92rem;
+  font-weight: 420;
+  line-height: 1.56;
+  margin: 0;
+}
+
+.pairing-loading-progress {
+  position: relative;
+  width: min(100%, 188px);
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(225, 29, 72, 0.08);
+}
+
+.pairing-loading-progress-bar {
+  position: absolute;
+  inset: 0;
+  width: 45%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(244, 63, 94, 0.2) 0%, #e11d48 55%, rgba(244, 63, 94, 0.2) 100%);
+  animation: pairingLoadingProgress 1.4s ease-in-out infinite;
+}
+
+.pairing-loading-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+
+.pairing-loading-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(225, 29, 72, 0.26);
+  animation: pairingLoadingDotPulse 1s ease-in-out infinite;
+}
+
+.pairing-loading-dot:nth-child(2) {
+  animation-delay: 0.12s;
+}
+
+.pairing-loading-dot:nth-child(3) {
+  animation-delay: 0.24s;
+}
+
+@keyframes pairingOrbitPulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.98);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+}
+
+@keyframes pairingLoadingProgress {
+  0% {
+    transform: translateX(-115%);
+  }
+
+  100% {
+    transform: translateX(260%);
+  }
+}
+
+@keyframes pairingLoadingDotPulse {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+@container wearable (max-width: 380px) {
+  .pairing-loading-logo {
+    width: min(100%, 156px);
+  }
+
+  .pairing-loading-orbit {
+    width: 132px;
+    height: 132px;
+  }
+
+  .pairing-loading-copy strong {
+    font-size: 1.28rem;
+  }
+
+  .pairing-loading-copy p {
+    font-size: 0.84rem;
+  }
+}
