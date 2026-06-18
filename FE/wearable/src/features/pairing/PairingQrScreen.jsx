@@ -26,11 +26,11 @@ export function PairingQrScreen({
         className="pairing-state-screen pairing-loading-screen pairing-expired-screen"
         aria-labelledby="pairing-expired-title"
       >
-        <div className="pairing-loading-orbit pairing-expired-orbit" aria-hidden="true">
-          <span className="pairing-loading-orbit-ring pairing-loading-orbit-ring-outer" />
-          <span className="pairing-loading-orbit-ring pairing-loading-orbit-ring-middle" />
-          <span className="pairing-loading-orbit-ring pairing-loading-orbit-ring-inner" />
-          <span className="pairing-loading-orbit-core pairing-expired-orbit-core">!</span>
+        <div className="pairing-expired-icon" aria-hidden="true">
+          <span className="pairing-expired-icon-pulse" />
+          <span className="pairing-expired-icon-triangle">
+            <span className="pairing-expired-icon-mark">!</span>
+          </span>
         </div>
         <h1 id="pairing-expired-title">QR 다시 발급 필요</h1>
         <p>유효 시간이 지나 현재 화면에서는 QR을 사용할 수 없습니다.</p>

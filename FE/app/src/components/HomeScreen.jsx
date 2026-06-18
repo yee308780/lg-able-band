@@ -1098,6 +1098,7 @@ function GuardianConnectionScreen({
     notifyOnDanger: true,
   })
   const [message, setMessage] = useState({ tone: '', text: '' })
+  const [toastKey, setToastKey] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [deletingGuardianId, setDeletingGuardianId] = useState(null)
   const isPrimaryChecked = guardians.length === 0 || form.isPrimary
@@ -1122,18 +1123,23 @@ function GuardianConnectionScreen({
     setMessage({ tone: '', text: '' })
   }
 
+  function showMessage(tone, text) {
+    setToastKey((current) => current + 1)
+    setMessage({ tone, text })
+  }
+
   async function handleSubmit(event) {
     event.preventDefault()
 
     const email = form.email.trim()
 
     if (!email) {
-      setMessage({ tone: 'error', text: '보호자 계정 이메일을 입력해주세요.' })
+      showMessage('error', '보호자 계정 이메일을 입력해주세요.')
       return
     }
 
     if (!isValidEmail(email)) {
-      setMessage({ tone: 'error', text: '올바른 이메일 형식으로 입력해주세요.' })
+      showMessage('error', '올바른 이메일 형식으로 입력해주세요.')
       return
     }
 
@@ -1144,20 +1150,14 @@ function GuardianConnectionScreen({
         isPrimary: isPrimaryChecked,
         notifyOnDanger: form.notifyOnDanger,
       })
-      setMessage({
-        tone: 'success',
-        text: `${guardian.name || '보호자'} 보호자와 연결했습니다.`,
-      })
+      showMessage('success', `${guardian.name || '보호자'} 보호자와 연결했습니다.`)
       setForm((current) => ({
         ...current,
         email: '',
         isPrimary: false,
       }))
     } catch (error) {
-      setMessage({
-        tone: 'error',
-        text: error.message || '보호자 연결을 저장하지 못했습니다.',
-      })
+      showMessage('error', error.message || '보호자 연결을 저장하지 못했습니다.')
     } finally {
       setSubmitting(false)
     }
@@ -1172,15 +1172,9 @@ function GuardianConnectionScreen({
     setMessage({ tone: '', text: '' })
     try {
       await onRemoveGuardian(guardian.guardianId)
-      setMessage({
-        tone: 'success',
-        text: `${guardian.name} 보호자 연결을 해제했습니다.`,
-      })
+      showMessage('success', `${guardian.name} 보호자 연결을 해제했습니다.`)
     } catch (error) {
-      setMessage({
-        tone: 'error',
-        text: error.message || '보호자 연결을 해제하지 못했습니다.',
-      })
+      showMessage('error', error.message || '보호자 연결을 해제하지 못했습니다.')
     } finally {
       setDeletingGuardianId(null)
     }
@@ -1294,6 +1288,7 @@ function GuardianConnectionScreen({
 
       {message.text ? (
         <div
+          key={toastKey}
           className="device-toast guardian-toast"
           role={message.tone === 'error' ? 'alert' : 'status'}
           aria-live={message.tone === 'error' ? 'assertive' : 'polite'}
