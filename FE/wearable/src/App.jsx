@@ -26,7 +26,6 @@ import {
   getUwbSession,
   requestEmergencyHelp,
   saveWearableAccessToken,
-  startUwbSession,
   stopUwbSession,
   unpairWearable,
 } from './services/wearableService'
@@ -60,6 +59,9 @@ function App() {
   const [isUwbPolling, setIsUwbPolling] = useState(true)
   const [statusMessage, setStatusMessage] = useState('')
   const [isBusy, setIsBusy] = useState(false)
+  const [isChatbotWakeListening, setIsChatbotWakeListening] = useState(false)
+  const [isChatbotOpen, setIsChatbotOpen] = useState(false)
+  const [isChatbotSpeaking, setIsChatbotSpeaking] = useState(false)
   const [syncedTime, setSyncedTime] = useState(() => new Date())
   const [selectedGuideTarget, setSelectedGuideTarget] = useState(null)
   const [livingSignalState, setLivingSignalState] = useState({
@@ -89,7 +91,14 @@ function App() {
   )
 
   const speakText = useCallback((text) => {
-    if (!text || typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    if (
+      !text ||
+      isChatbotOpen ||
+      isChatbotSpeaking ||
+      typeof window === 'undefined' ||
+      window.__ABLE_BAND_CHATBOT_AUDIO_LOCK__ === true ||
+      !('speechSynthesis' in window)
+    ) {
       return
     }
 
@@ -97,7 +106,7 @@ function App() {
     const utterance = new SpeechSynthesisUtterance(text)
     utterance.lang = 'ko-KR'
     window.speechSynthesis.speak(utterance)
-  }, [])
+  }, [isChatbotOpen, isChatbotSpeaking])
 
   const stopLivingSignalMonitoring = useCallback(async () => {
     const session = livingSignalSessionRef.current
@@ -304,7 +313,7 @@ function App() {
   }, [alertStatuses, isPaired, mode, resetPairingSession])
 
   useEffect(() => {
-    if (!isPaired || mode === 'uwb' || mode === 'emergency') {
+    if (!isPaired || isChatbotWakeListening || mode === 'uwb' || mode === 'emergency') {
       stopLivingSignalMonitoring()
       return undefined
     }
@@ -433,7 +442,7 @@ function App() {
       isMounted = false
       stopLivingSignalMonitoring()
     }
-  }, [isPaired, mode, speakText, stopLivingSignalMonitoring])
+  }, [isChatbotWakeListening, isPaired, mode, speakText, stopLivingSignalMonitoring])
 
   useEffect(() => {
     if (!selectedAlert?.alertId) {
@@ -712,7 +721,7 @@ function App() {
             <dl className="standby-meta">
               <div>
                 <dt>마이크 감지</dt>
-                <dd>{livingSignalState.isListening ? '실행 중' : '준비 중'}</dd>
+                <dd>{isChatbotWakeListening ? '챗봇 대기 중' : livingSignalState.isListening ? '실행 중' : '준비 중'}</dd>
               </div>
               <div>
                 <dt>연동</dt>
@@ -767,15 +776,17 @@ function App() {
           />
         ) : null}
 
-        {isPaired ? (
-          <VoiceChatbot
-            alert={selectedAlert}
-            alertQueue={alertQueue}
-            mode={mode}
-            statusMessage={statusMessage}
-            uwbSession={uwbSession}
-          />
-        ) : null}
+        <VoiceChatbot
+          alert={selectedAlert}
+          alertQueue={alertQueue}
+          isPaired={isPaired}
+          mode={isPaired ? mode : 'pairing'}
+          onOpenChange={setIsChatbotOpen}
+          onSpeakingChange={setIsChatbotSpeaking}
+          onWakeListeningChange={setIsChatbotWakeListening}
+          statusMessage={statusMessage}
+          uwbSession={uwbSession}
+        />
       </WearableFrame>
     </main>
   )

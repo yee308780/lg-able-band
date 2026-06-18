@@ -106,6 +106,42 @@ export function createWearableService({
         },
       })
     },
+    async getUnreadWearableAlerts() {
+      return withFallback({
+        apiEnabled: isApiEnabled(),
+        fallbackEnabled,
+        fallback: () => getMockCurrentAlerts().filter(isUnreadAlert),
+        request: async () => {
+          const response = await request('/api/wearable/alerts/unread', { method: 'GET' })
+          const alerts = normalizeListResponse(response).map(normalizeAlert)
+          return sortAlerts(alerts)
+        },
+      })
+    },
+    async markWearableAlertsRead(alertIds = []) {
+      return withFallback({
+        apiEnabled: isApiEnabled(),
+        fallbackEnabled,
+        fallback: () => ({
+          status: 'CONFIRMED',
+          alertIds,
+          updatedCount: alertIds.length,
+        }),
+        request: async () =>
+          request('/api/wearable/alerts/read', {
+            method: 'PATCH',
+            body: { alertIds },
+          }),
+      })
+    },
+    async getWearableAppliances() {
+      return withFallback({
+        apiEnabled: isApiEnabled(),
+        fallbackEnabled,
+        fallback: getMockAppliances,
+        request: async () => normalizeListResponse(await request('/api/wearable/appliances', { method: 'GET' })).map(normalizeAppliance),
+      })
+    },
     async confirmAlert(alertId) {
       if (globalThis.__ABLE_BAND_WEARABLE_FAIL_CONFIRM__) {
         throw new Error('확인 처리에 실패했습니다.')
@@ -163,6 +199,51 @@ export function createWearableService({
           ),
       })
     },
+    async startWearableUwbSession({ targetDeviceId, type, name } = {}) {
+      return withFallback({
+        apiEnabled: isApiEnabled(),
+        fallbackEnabled,
+        fallback: () => {
+          const target =
+            getMockUwbTargets().find((item) => item.deviceId === Number(targetDeviceId)) ||
+            getMockUwbTargets().find((item) => item.type === type || item.name === name)
+          return startMockUwbSession(target?.deviceId || targetDeviceId)
+        },
+        request: async () =>
+          normalizeUwbSession(
+            await request('/api/wearable/uwb/start', {
+              method: 'POST',
+              body: {
+                targetDeviceId: targetDeviceId ? Number(targetDeviceId) : undefined,
+                type,
+                name,
+              },
+            }),
+          ),
+      })
+    },
+    async getWearableUwbSession(sessionId) {
+      return withFallback({
+        apiEnabled: isApiEnabled(),
+        fallbackEnabled,
+        fallback: () => getMockUwbSession(sessionId),
+        request: async () => normalizeUwbSession(await request(`/api/wearable/uwb/session/${sessionId}`, { method: 'GET' })),
+      })
+    },
+    async stopWearableUwbSession(sessionId) {
+      return withFallback({
+        apiEnabled: isApiEnabled(),
+        fallbackEnabled,
+        fallback: () => stopMockUwbSession(sessionId),
+        request: async () =>
+          normalizeUwbSession(
+            await request(`/api/wearable/uwb/session/${sessionId}`, {
+              method: 'PATCH',
+              body: { status: 'STOPPED' },
+            }),
+          ),
+      })
+    },
     async stopUwbSession(sessionId) {
       return withFallback({
         apiEnabled: isApiEnabled(),
@@ -183,6 +264,21 @@ export function createWearableService({
         fallback: () => requestMockEmergencyHelp(message),
         request: async () =>
           request('/api/emergency-requests', {
+            method: 'POST',
+            body: {
+              message,
+              source: 'WEARABLE',
+            },
+          }),
+      })
+    },
+    async requestWearableEmergencyHelp(message = '도움이 필요합니다.') {
+      return withFallback({
+        apiEnabled: isApiEnabled(),
+        fallbackEnabled,
+        fallback: () => requestMockEmergencyHelp(message),
+        request: async () =>
+          request('/api/wearable/emergency/request', {
             method: 'POST',
             body: {
               message,
@@ -235,6 +331,18 @@ export async function getCurrentAlerts() {
   return defaultService.getCurrentAlerts()
 }
 
+export async function getUnreadWearableAlerts() {
+  return defaultService.getUnreadWearableAlerts()
+}
+
+export async function markWearableAlertsRead(alertIds) {
+  return defaultService.markWearableAlertsRead(alertIds)
+}
+
+export async function getWearableAppliances() {
+  return defaultService.getWearableAppliances()
+}
+
 export async function confirmAlert(alertId) {
   return defaultService.confirmAlert(alertId)
 }
@@ -255,6 +363,18 @@ export async function startUwbSession(targetDeviceId) {
   return defaultService.startUwbSession(targetDeviceId)
 }
 
+export async function startWearableUwbSession(options) {
+  return defaultService.startWearableUwbSession(options)
+}
+
+export async function getWearableUwbSession(sessionId) {
+  return defaultService.getWearableUwbSession(sessionId)
+}
+
+export async function stopWearableUwbSession(sessionId) {
+  return defaultService.stopWearableUwbSession(sessionId)
+}
+
 export async function stopUwbSession(sessionId) {
   return defaultService.stopUwbSession(sessionId)
 }
@@ -263,13 +383,18 @@ export async function requestEmergencyHelp(message) {
   return defaultService.requestEmergencyHelp(message)
 }
 
+export async function requestWearableEmergencyHelp(message) {
+  return defaultService.requestWearableEmergencyHelp(message)
+}
+
 export function normalizeUwbSession(session) {
   return {
     sessionId: session.sessionId,
     targetDeviceId: session.targetDeviceId || session.targetDevice?.deviceId,
     targetDeviceName: session.targetDeviceName || session.targetDevice?.name || '대상 기기',
     status: session.status || session.navigationStatus,
-    distanceM: session.distanceM,
+    distanceM: session.distanceM ?? session.distanceMeter,
+    distanceMeter: session.distanceMeter ?? session.distanceM,
     confidence: session.confidence,
     navigationStatus: session.navigationStatus || session.status,
     voiceGuide: session.voiceGuide,
@@ -291,6 +416,22 @@ export function normalizeUwbTarget(target) {
     statusTone: connectionStatus === 'CONNECTED' ? 'connected' : 'warning',
     icon: deviceIcon(target.type || target.deviceType),
     iconTone: deviceIconTone(target.type || target.deviceType),
+  }
+}
+
+export function normalizeAppliance(appliance) {
+  const type = appliance.type || appliance.deviceType || appliance.applianceType || 'APPLIANCE'
+  const connectionStatus = appliance.connectionStatus || appliance.status || 'CONNECTED'
+
+  return {
+    applianceId: appliance.applianceId || appliance.deviceId || appliance.id,
+    deviceId: appliance.deviceId || appliance.applianceId || appliance.id,
+    name: appliance.name || appliance.deviceName || '가전',
+    type,
+    connectionStatus,
+    locationName: appliance.locationName || appliance.location || appliance.roomName || '집 안',
+    uwbSupported: appliance.uwbSupported !== false,
+    status: connectionStatus,
   }
 }
 
@@ -454,16 +595,16 @@ function findAlert(alertId) {
 
 function normalizeAlert(alert) {
   return {
-    alertId: alert.alertId,
-    type: alert.type,
+    alertId: alert.alertId || alert.id,
+    type: alert.type || alert.alertType,
     severity: alert.severity,
     title: alert.title,
     message: alert.message,
     voiceGuide: alert.voiceGuide || alert.message,
     deviceName: alert.deviceName || alert.device?.name || '연동 기기',
     locationName: alert.locationName || alert.location || '집 안',
-    occurredAt: alert.occurredAt,
-    status: alert.status || 'UNREAD',
+    occurredAt: alert.occurredAt || alert.createdAt,
+    status: alert.status || (alert.isRead === true ? 'CONFIRMED' : 'UNREAD'),
     vibrationPattern: alert.vibrationPattern,
   }
 }
@@ -478,6 +619,17 @@ function normalizeListResponse(response) {
 
 function getMockCurrentAlerts() {
   return sortAlerts(mockAlerts.map(clone))
+}
+
+function getMockAppliances() {
+  return [
+    normalizeAppliance({ deviceId: 10, name: '세탁기', type: 'WASHER', connectionStatus: 'CONNECTED', locationName: '세탁실' }),
+    normalizeAppliance({ deviceId: 14, name: '냉장고', type: 'FRIDGE', connectionStatus: 'CONNECTED', locationName: '주방' }),
+  ]
+}
+
+function isUnreadAlert(alert) {
+  return normalizeAlert(alert).status !== 'CONFIRMED'
 }
 
 function sortAlerts(alerts) {
@@ -536,6 +688,7 @@ async function stopMockUwbSession(sessionId) {
 function getMockUwbTargets() {
   return [
     normalizeUwbTarget({ deviceId: 10, name: '세탁기', type: 'WASHER', connectionStatus: 'CONNECTED' }),
+    normalizeUwbTarget({ deviceId: 14, name: '냉장고', type: 'FRIDGE', connectionStatus: 'CONNECTED' }),
     normalizeUwbTarget({ deviceId: 11, name: 'TV', type: 'TV', connectionStatus: 'CONNECTED' }),
     normalizeUwbTarget({ deviceId: 12, name: '안전 전기레인지', type: 'RANGE', connectionStatus: 'WARNING' }),
     normalizeUwbTarget({ deviceId: 13, name: '도어센서', type: 'DOOR_SENSOR', connectionStatus: 'CONNECTED' }),
