@@ -1,6 +1,7 @@
 import jsQR from 'jsqr'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { LivingSignalSettingsScreen } from '../features/living-signal'
+import { getAccessibilitySettings, updateAccessibilitySettings } from '../services/accessibilityService'
 import { getAppPreview, getHomeSummary } from '../services/homeService'
 import { createEmergencyRequest } from '../services/emergencyService'
 import { deleteGuardian, getGuardians, linkGuardianByEmail } from '../services/guardianService'
@@ -17,7 +18,7 @@ import {
 
 function scrollAppContentToTop() {
   const appContent = document.querySelector('.app-content')
-  if (appContent instanceof HTMLElement) {
+  if (appContent instanceof HTMLElement && typeof appContent.scrollTo === 'function') {
     appContent.scrollTo({ top: 0, left: 0 })
   }
 
@@ -47,6 +48,8 @@ const connectionStatusLabels = {
 }
 
 export function HomeScreen({ session, onLogout }) {
+  const sessionEmail = session.account.email
+  const sessionAccessibilityType = session.userProfile?.accessibilityType
   const [activeTab, setActiveTab] = useState('home')
   const [alertsScreen, setAlertsScreen] = useState('list')
   const [menuScreen, setMenuScreen] = useState('root')
@@ -70,9 +73,26 @@ export function HomeScreen({ session, onLogout }) {
     async function loadHome() {
       try {
         const [summary, preview] = await Promise.all([getHomeSummary(), getAppPreview()])
+        const accessibilityType = sessionAccessibilityType || summary.user?.accessibilityType || 'VISUAL'
+        const accessibilitySettings = await getAccessibilitySettings({
+          accessibilityType,
+          identity: sessionEmail,
+        })
 
         if (isMounted) {
-          setHomeState({ loading: false, error: '', summary, preview })
+          setHomeState({
+            loading: false,
+            error: '',
+            summary,
+            preview: {
+              ...preview,
+              accessibility: createAccessibilityView(
+                preview.accessibility,
+                accessibilitySettings,
+                accessibilityType,
+              ),
+            },
+          })
         }
       } catch {
         if (isMounted) {
@@ -91,7 +111,7 @@ export function HomeScreen({ session, onLogout }) {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [sessionAccessibilityType, sessionEmail])
 
   useEffect(() => {
     let isMounted = true
@@ -197,6 +217,34 @@ export function HomeScreen({ session, onLogout }) {
         preview: {
           ...currentState.preview,
           alerts: updateAlertsWithStatus(currentState.preview.alerts, alertId, status),
+        },
+      }
+    })
+  }
+
+  async function handleAccessibilityChange(nextSettings) {
+    const accessibilityType =
+      sessionAccessibilityType || homeState.summary?.user?.accessibilityType || 'VISUAL'
+    const savedSettings = await updateAccessibilitySettings({
+      accessibilityType,
+      identity: sessionEmail,
+      settings: nextSettings,
+    })
+
+    setHomeState((currentState) => {
+      if (!currentState.preview) {
+        return currentState
+      }
+
+      return {
+        ...currentState,
+        preview: {
+          ...currentState.preview,
+          accessibility: createAccessibilityView(
+            currentState.preview.accessibility,
+            savedSettings,
+            accessibilityType,
+          ),
         },
       }
     })
@@ -319,6 +367,7 @@ export function HomeScreen({ session, onLogout }) {
             accessibility={preview.accessibility}
             guardians={linkedGuardians}
             livingSignals={preview.livingSignals}
+            onAccessibilityChange={handleAccessibilityChange}
             onOpenGuardianConnection={() => setMenuScreen('guardianConnection')}
             onOpenLivingSignals={() => setMenuScreen('livingSignals')}
             onOpenWearablePairing={() => setMenuScreen('wearablePairing')}
@@ -365,10 +414,62 @@ export function HomeScreen({ session, onLogout }) {
   )
 }
 
+function createAccessibilityView(currentAccessibility, settings, accessibilityType) {
+  const largeText = Boolean(settings.largeText)
+
+  return {
+    ...currentAccessibility,
+    ...settings,
+    disabilityType: formatAccessibilityType(accessibilityType || currentAccessibility?.disabilityType),
+    largeText,
+    textSize: largeText ? '크게' : '기본',
+  }
+}
+
+function formatAccessibilityType(value) {
+  if (value === 'VISUAL') {
+    return '시각장애'
+  }
+
+  if (value === 'HEARING') {
+    return '청각장애'
+  }
+
+  return value || '지원 정보 없음'
+}
+
+const accessibilityToggleItems = [
+  {
+    key: 'voiceGuide',
+    label: '음성 안내',
+    icon: '음',
+    description: '위험 알림과 주요 안내를 음성으로 들려줍니다.',
+  },
+  {
+    key: 'vibrationGuide',
+    label: '진동 안내',
+    icon: '진',
+    description: '밴드와 앱 알림을 진동 중심으로 전달합니다.',
+  },
+  {
+    key: 'largeText',
+    label: '큰 글씨',
+    icon: 'Aa',
+    description: '큰 글씨 안내 설정을 저장합니다.',
+  },
+  {
+    key: 'highContrast',
+    label: '고대비',
+    icon: '대',
+    description: '고대비 안내 설정을 저장합니다.',
+  },
+]
+
 function MenuTab({
   accessibility,
   guardians,
   livingSignals,
+  onAccessibilityChange,
   onOpenGuardianConnection,
   onOpenLivingSignals,
   onOpenWearablePairing,
@@ -376,6 +477,8 @@ function MenuTab({
   userName,
 }) {
   const [guardianInviteMessage, setGuardianInviteMessageState] = useState('')
+  const [accessibilityMessage, setAccessibilityMessage] = useState('')
+  const [accessibilitySavingKey, setAccessibilitySavingKey] = useState('')
   function setGuardianInviteMessage(nextMessage) {
     setGuardianInviteMessageState((currentMessage) =>
       currentMessage === nextMessage ? '' : nextMessage,
@@ -396,20 +499,78 @@ function MenuTab({
       status: formatConnectionStatus(member.connectionStatus || member.status),
     })),
   ]
+  const accessibilitySettings = {
+    voiceGuide: Boolean(accessibility.voiceGuide),
+    vibrationGuide: Boolean(accessibility.vibrationGuide),
+    highContrast: Boolean(accessibility.highContrast),
+    largeText: Boolean(accessibility.largeText || accessibility.textSize === '크게'),
+  }
+
+  async function handleAccessibilityToggle(settingKey) {
+    const nextSettings = {
+      ...accessibilitySettings,
+      [settingKey]: !accessibilitySettings[settingKey],
+    }
+
+    setAccessibilitySavingKey(settingKey)
+    setAccessibilityMessage('접근성 설정을 저장하는 중입니다.')
+    try {
+      await onAccessibilityChange(nextSettings)
+      setAccessibilityMessage('접근성 설정을 저장했습니다.')
+    } catch (error) {
+      setAccessibilityMessage(error.message || '접근성 설정을 저장하지 못했습니다.')
+    } finally {
+      setAccessibilitySavingKey('')
+    }
+  }
 
   return (
     <section className="tab-stack" aria-labelledby="menu-title">
-      <section className="content-card">
-        <div className="section-title-row" id="menu-title">
-          <strong className="card-title">접근성 설정</strong>
-          <span>{accessibility.textSize}</span>
+      <section className="content-card accessibility-summary-card">
+        <div className="accessibility-card-header" id="menu-title">
+          <div>
+            <p className="card-label">접근성 설정</p>
+            <h2>알림과 화면 보조 설정</h2>
+          </div>
+          <span className="accessibility-type-badge">{accessibility.disabilityType}</span>
         </div>
-        <div className="settings-grid">
-          <span>{accessibility.disabilityType}</span>
-          <span>{accessibility.voiceGuide ? '음성 안내 ON' : '음성 안내 OFF'}</span>
-          <span>{accessibility.vibrationGuide ? '진동 안내 ON' : '진동 안내 OFF'}</span>
-          <span>{accessibility.highContrast ? '고대비 ON' : '고대비 OFF'}</span>
+        <p className="accessibility-quick-copy">
+          필요한 안내 방식을 켜두면 알림과 위험 안내 설정으로 저장됩니다.
+        </p>
+        <div className="accessibility-quick-grid">
+          {accessibilityToggleItems.map((item) => {
+            const isActive = accessibilitySettings[item.key]
+            const isSaving = accessibilitySavingKey === item.key
+            return (
+              <button
+                className={isActive ? 'accessibility-quick-toggle active' : 'accessibility-quick-toggle'}
+                type="button"
+                key={item.key}
+                aria-pressed={isActive}
+                disabled={Boolean(accessibilitySavingKey)}
+                onClick={() => handleAccessibilityToggle(item.key)}
+              >
+                <span className="accessibility-quick-icon" aria-hidden="true">
+                  {item.icon}
+                </span>
+                <span className="accessibility-quick-text">
+                  <strong>
+                    {item.label} {isActive ? 'ON' : 'OFF'}
+                  </strong>
+                  <small>{isSaving ? '저장 중' : item.description}</small>
+                </span>
+                <span className="accessibility-inline-switch" aria-hidden="true">
+                  <span />
+                </span>
+              </button>
+            )
+          })}
         </div>
+        {accessibilityMessage ? (
+          <p className="accessibility-save-message" role="status">
+            {accessibilityMessage}
+          </p>
+        ) : null}
       </section>
 
       <section className="soft-card home-member-card" aria-labelledby="home-member-title">
