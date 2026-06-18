@@ -22,11 +22,16 @@ export function PairingQrScreen({
 
   if (status === 'expired') {
     return (
-      <section className="pairing-state-screen" aria-labelledby="pairing-expired-title">
-        <p className="pairing-state-icon warning" aria-hidden="true">
-          !
-        </p>
-        <p className="eyebrow">연동 상태</p>
+      <section
+        className="pairing-state-screen pairing-loading-screen pairing-expired-screen"
+        aria-labelledby="pairing-expired-title"
+      >
+        <div className="pairing-loading-orbit pairing-expired-orbit" aria-hidden="true">
+          <span className="pairing-loading-orbit-ring pairing-loading-orbit-ring-outer" />
+          <span className="pairing-loading-orbit-ring pairing-loading-orbit-ring-middle" />
+          <span className="pairing-loading-orbit-ring pairing-loading-orbit-ring-inner" />
+          <span className="pairing-loading-orbit-core pairing-expired-orbit-core">!</span>
+        </div>
         <h1 id="pairing-expired-title">QR 다시 발급 필요</h1>
         <p>유효 시간이 지나 현재 화면에서는 QR을 사용할 수 없습니다.</p>
         <button className="primary-action" type="button" onClick={onResetPairing}>
@@ -88,7 +93,7 @@ export function PairingQrScreen({
     <section className="pairing-screen" aria-labelledby="pairing-title">
       <div className="pairing-copy">
         <img className="wearable-brand-logo" src="/LG_Able_Band_wordmark_transparent.png" alt="LG Able Band" />
-        <h1 id="pairing-title">휴대폰으로 연동</h1>
+        <h1 id="pairing-title">앱과 연동</h1>
         <p>앱에서 QR을 스캔하면 바로 밴드가 연결됩니다.</p>
         <span className="pairing-status" role="status">
           스캔 대기 중
