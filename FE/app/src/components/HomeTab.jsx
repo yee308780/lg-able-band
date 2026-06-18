@@ -1,3 +1,11 @@
+import {
+  createHomeAlertMetrics,
+  formatStatusUpdatedAt,
+  getActionableRecentAlerts,
+  getDeviceWarningSummary,
+  getEmergencyAvailability,
+} from '../utils/homeSummaryUtils'
+
 const severityLabels = {
   LOW: '생활',
   MEDIUM: '주의',
@@ -14,8 +22,14 @@ export function HomeTab({
   onOpenAlerts,
   onOpenDevices,
 }) {
-  const recentAlerts = summary.recentAlerts.slice(0, 1)
-  const alertMetrics = createAlertMetrics(summary.recentAlerts)
+  const recentAlerts = getActionableRecentAlerts(summary.recentAlerts)
+  const alertMetrics = createHomeAlertMetrics(summary.recentAlerts)
+  const updatedAtLabel = formatStatusUpdatedAt(summary.safetyStatus.lastCheckedAt)
+  const emergencyAvailability = getEmergencyAvailability(summary)
+  const emergencyStatusMessage =
+    emergencyMessage || (!emergencyAvailability.canRequest ? emergencyAvailability.reason : '')
+  const deviceWarningSummary = getDeviceWarningSummary(summary.deviceSummary)
+
   return (
     <>
       <section className={`status-card home-safety-card status-${summary.safetyStatus.level.toLowerCase()}`}>
@@ -29,7 +43,7 @@ export function HomeTab({
               </span>
             </strong>
           </div>
-          <span className="status-badge">방금 전</span>
+          {updatedAtLabel ? <span className="status-badge">{updatedAtLabel}</span> : null}
         </div>
         <p className="status-copy">{summary.safetyStatus.message}</p>
         <div className="home-metric-row" aria-label="오늘 알림 요약">
@@ -49,14 +63,14 @@ export function HomeTab({
           className="sos-button"
           type="button"
           aria-busy={emergencySubmitting}
-          disabled={!summary.quickActions.canRequestEmergency || emergencySubmitting}
+          disabled={!emergencyAvailability.canRequest || emergencySubmitting}
           onClick={onEmergencyRequest}
         >
           {emergencySubmitting ? '요청 전송 중...' : '긴급 지원 요청'}
         </button>
-        {emergencyMessage ? (
+        {emergencyStatusMessage ? (
           <p className="emergency-message" role="status">
-            {emergencyMessage}
+            {emergencyStatusMessage}
           </p>
         ) : null}
       </section>
@@ -74,7 +88,7 @@ export function HomeTab({
           </button>
         </div>
         <div className="device-stat-grid" aria-label="기기 상태 요약">
-          <span className="device-stat">주의 필요 {summary.deviceSummary.warningCount}개</span>
+          <span className="device-stat">{deviceWarningSummary.label}</span>
           <span className="device-stat">UWB 지원 {summary.deviceSummary.uwbSupportedCount}개</span>
         </div>
       </section>
@@ -113,12 +127,4 @@ export function HomeTab({
       </section>
     </>
   )
-}
-
-function createAlertMetrics(alerts) {
-  return {
-    total: alerts.length,
-    unread: alerts.filter((alert) => alert.status === 'UNREAD').length,
-    danger: alerts.filter((alert) => alert.severity === 'HIGH' || alert.severity === 'CRITICAL').length,
-  }
 }

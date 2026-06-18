@@ -54,11 +54,23 @@ function normalizeAlert(alert, fixtures) {
 }
 
 function normalizeHomeSummary(summary) {
+  const safetyStatusFallback = summary.safetyStatus
+    ? { ...mockHomeSummary.safetyStatus, lastCheckedAt: undefined }
+    : mockHomeSummary.safetyStatus
+  const emergencyEnabled =
+    typeof summary.emergency?.enabled === 'boolean'
+      ? summary.emergency.enabled
+      : mockHomeSummary.emergency.enabled
+  const canRequestEmergency =
+    typeof summary.quickActions?.canRequestEmergency === 'boolean'
+      ? summary.quickActions.canRequestEmergency
+      : emergencyEnabled
+
   return {
     ...summary,
     user: summary.user || mockHomeSummary.user,
     safetyStatus: {
-      ...mockHomeSummary.safetyStatus,
+      ...safetyStatusFallback,
       ...summary.safetyStatus,
     },
     recentAlerts: summary.recentAlerts || [],
@@ -69,11 +81,13 @@ function normalizeHomeSummary(summary) {
     emergency: {
       ...mockHomeSummary.emergency,
       ...summary.emergency,
+      enabled: emergencyEnabled,
       primaryGuardianName: summary.emergency?.primaryGuardianName || '보호자',
     },
     quickActions: {
       ...mockHomeSummary.quickActions,
       ...summary.quickActions,
+      canRequestEmergency,
     },
   }
 }

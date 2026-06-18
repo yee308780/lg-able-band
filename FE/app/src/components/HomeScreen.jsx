@@ -9,6 +9,11 @@ import { DevicesTab } from './DevicesTab'
 import { HomeTab } from './HomeTab'
 import { CHATBOT_INTERRUPT_EVENT, VoiceChatbot } from './VoiceChatbot'
 import { completeWearablePairing } from '../services/wearablePairingService'
+import {
+  getSafetyStatusDisplay,
+  mergeAlertStatusIntoHomeSummary,
+  updateAlertsWithStatus,
+} from '../utils/homeSummaryUtils'
 
 function scrollAppContentToTop() {
   const appContent = document.querySelector('.app-content')
@@ -17,13 +22,6 @@ function scrollAppContentToTop() {
   }
 
   window.scrollTo({ top: 0, left: 0 })
-}
-
-const statusDisplays = {
-  SAFE: { label: '안전', emoji: '🙂' },
-  CAUTION: { label: '주의', emoji: '😐' },
-  DANGER: { label: '위험', emoji: '😟' },
-  EMERGENCY: { label: '긴급', emoji: '😨' },
 }
 
 const tabs = [
@@ -177,12 +175,31 @@ export function HomeScreen({ session, onLogout }) {
     setEmergencyMessage('긴급 요청을 보내는 중입니다.')
     try {
       const request = await createEmergencyRequest()
-      setEmergencyMessage(request.message || '보호자에게 긴급 요청을 보냈습니다.')
+      setEmergencyMessage(request.statusMessage || '보호자에게 긴급 요청을 보냈습니다.')
+      const [summary, preview] = await Promise.all([getHomeSummary(), getAppPreview()])
+      setHomeState({ loading: false, error: '', summary, preview })
     } catch (error) {
       setEmergencyMessage(error.message || '긴급 요청을 보내지 못했습니다.')
     } finally {
       setEmergencySubmitting(false)
     }
+  }
+
+  function handleAlertStatusChange(alertId, status) {
+    setHomeState((currentState) => {
+      if (!currentState.summary || !currentState.preview) {
+        return currentState
+      }
+
+      return {
+        ...currentState,
+        summary: mergeAlertStatusIntoHomeSummary(currentState.summary, alertId, status),
+        preview: {
+          ...currentState.preview,
+          alerts: updateAlertsWithStatus(currentState.preview.alerts, alertId, status),
+        },
+      }
+    })
   }
 
   async function handleLinkGuardian(form) {
@@ -229,10 +246,7 @@ export function HomeScreen({ session, onLogout }) {
   }
 
   const { preview, summary } = homeState
-  const statusDisplay = statusDisplays[summary.safetyStatus.level] || {
-    label: summary.safetyStatus.level,
-    emoji: '🙂',
-  }
+  const statusDisplay = getSafetyStatusDisplay(summary.safetyStatus.level)
   const homeUserName = summary.user?.name || session.account.name
   const displayTitle = activeTab === 'home' ? `${homeUserName} 홈` : currentTitle
 
@@ -284,6 +298,7 @@ export function HomeScreen({ session, onLogout }) {
             accessibilityType={session.userProfile?.accessibilityType || 'VISUAL'}
             alerts={preview.alerts}
             alertView={alertsScreen}
+            onAlertStatusChange={handleAlertStatusChange}
             onCloseStats={() => setAlertsScreen('list')}
           />
         ) : null}
