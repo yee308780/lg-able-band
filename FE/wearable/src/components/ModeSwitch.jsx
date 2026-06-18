@@ -1,7 +1,7 @@
 const modes = [
   { id: 'alert', label: '알림' },
   { id: 'uwb', label: 'UWB' },
-  { id: 'idle', label: '대기' },
+  { id: 'idle', label: 'AI' },
 ]
 
 export function ModeSwitch({ activeMode, onModeChange }) {

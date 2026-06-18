@@ -235,15 +235,17 @@ const welfareAnswers = {
 export function VoiceChatbot({
   alert,
   alertQueue = [],
+  embedded = false,
   isPaired = true,
   mode,
   onOpenChange,
   onSpeakingChange,
   onWakeListeningChange,
+  showFab = true,
   statusMessage,
   uwbSession,
 }) {
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(embedded)
   const [currentChatScreen, setCurrentChatScreen] = useState('start')
   const [selectedPhrase, setSelectedPhrase] = useState('')
   const [selectedQuestion, setSelectedQuestion] = useState('alert')
@@ -402,6 +404,22 @@ export function VoiceChatbot({
     setIsRequesting(false)
     setConversationState(CONVERSATION_STATE.IDLE)
     setVoiceStatus('챗봇을 종료했어요.')
+    setCurrentChatScreen('start')
+    setSelectedPhrase('')
+    setSelectedQuestion('alert')
+    setSelectedWelfareType('')
+    setTranscript('')
+    setChatResponse({
+      title: 'AI 챗봇',
+      text: CHATBOT_INTRO,
+      quickReplies: [],
+    })
+
+    if (embedded) {
+      setIsOpen(true)
+      isOpenRef.current = true
+      return
+    }
   }
 
   async function beginVoiceConversation() {
@@ -1321,12 +1339,18 @@ export function VoiceChatbot({
 
   return (
     <>
-      <button className="voice-chatbot-fab" type="button" aria-label="AI 챗봇 열기" onClick={() => openChatbot()}>
-        AI
-      </button>
+      {!embedded && showFab ? (
+        <button className="voice-chatbot-fab" type="button" aria-label="AI 챗봇 열기" onClick={() => openChatbot()}>
+          AI
+        </button>
+      ) : null}
 
-      {isOpen ? (
-        <section className="wearable-chat-screen" aria-label="AI 챗봇" data-voice-state={conversationState}>
+      {embedded || isOpen ? (
+        <section
+          className={embedded ? 'wearable-chat-screen wearable-chat-screen-embedded' : 'wearable-chat-screen'}
+          aria-label="AI 챗봇"
+          data-voice-state={conversationState}
+        >
           <button className="wearable-chat-back" type="button" aria-label="이전으로" onClick={goBack}>
             ‹
           </button>

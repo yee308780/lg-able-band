@@ -721,29 +721,19 @@ function App() {
         ) : null}
 
         {isPaired && mode === 'idle' ? (
-          <section className="state-screen standby-screen" aria-label="웨어러블 대기">
-            <p className="eyebrow">Able Band</p>
-            <h1>웨어러블에서 대기 중</h1>
-            <p>생활 신호 감지와 위치 안내가 시작되면 바로 표시됩니다.</p>
-            <dl className="standby-meta">
-              <div>
-                <dt>마이크 감지</dt>
-                <dd>{isChatbotOpen ? '챗봇 사용 중' : isChatbotWakeListening ? '챗봇 대기 중' : livingSignalState.isListening ? '실행 중' : '준비 중'}</dd>
-              </div>
-              <div>
-                <dt>연동</dt>
-                <dd>앱과 연결됨</dd>
-              </div>
-            </dl>
-            <div className="action-row">
-              <button className="primary-action" type="button" onClick={() => setMode('emergency')}>
-                긴급 요청
-              </button>
-              <button className="secondary-action" disabled={isBusy} type="button" onClick={handleUnpair}>
-                연동 해제
-              </button>
-            </div>
-          </section>
+          <VoiceChatbot
+            alert={selectedAlert}
+            alertQueue={alertQueue}
+            embedded
+            isPaired={isPaired}
+            mode={mode}
+            onOpenChange={setIsChatbotOpen}
+            onSpeakingChange={setIsChatbotSpeaking}
+            onWakeListeningChange={setIsChatbotWakeListening}
+            showFab={false}
+            statusMessage={statusMessage}
+            uwbSession={uwbSession}
+          />
         ) : null}
 
         {isPaired && mode === 'deviceSelect' ? (
@@ -783,17 +773,20 @@ function App() {
           />
         ) : null}
 
-        <VoiceChatbot
-          alert={selectedAlert}
-          alertQueue={alertQueue}
-          isPaired={isPaired}
-          mode={isPaired ? mode : 'pairing'}
-          onOpenChange={setIsChatbotOpen}
-          onSpeakingChange={setIsChatbotSpeaking}
-          onWakeListeningChange={setIsChatbotWakeListening}
-          statusMessage={statusMessage}
-          uwbSession={uwbSession}
-        />
+        {isPaired && mode !== 'idle' ? (
+          <VoiceChatbot
+            alert={selectedAlert}
+            alertQueue={alertQueue}
+            isPaired={isPaired}
+            mode={mode}
+            onOpenChange={setIsChatbotOpen}
+            onSpeakingChange={setIsChatbotSpeaking}
+            onWakeListeningChange={setIsChatbotWakeListening}
+            showFab={false}
+            statusMessage={statusMessage}
+            uwbSession={uwbSession}
+          />
+        ) : null}
       </WearableFrame>
     </main>
   )

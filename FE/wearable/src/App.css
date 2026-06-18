@@ -518,6 +518,14 @@ h1 {
   background: linear-gradient(180deg, #ffffff 0%, #f7f8fa 100%);
 }
 
+.wearable-chat-screen-embedded {
+  position: relative;
+  inset: auto;
+  min-height: 100%;
+  height: 100%;
+  border-radius: 18px;
+}
+
 .wearable-chat-back {
   position: absolute;
   top: 12px;
@@ -1423,10 +1431,12 @@ button:focus-visible {
 }
 
 .app-root {
+  width: 100%;
   background:
     radial-gradient(circle at top center, rgba(255, 255, 255, 0.75) 0%, rgba(255, 255, 255, 0) 30%),
     var(--wearable-bg);
   color: var(--wearable-text);
+  justify-items: center;
 }
 
 .wearable-shell {
@@ -2803,7 +2813,7 @@ h1 {
 }
 
 .wearable-screen-with-mode-switch {
-  padding-top: 76px !important;
+  padding-top: 98px !important;
 }
 
 .mode-switch {
@@ -2818,42 +2828,42 @@ h1 {
   flex-wrap: nowrap !important;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  min-height: 60px;
-  padding: 6px 7px;
+  gap: 10px;
+  min-height: 76px;
+  padding: 8px 10px;
   z-index: 5;
 }
 
 .mode-button {
-  flex: 0 0 98px;
-  width: 98px;
-  min-width: 98px;
-  max-width: 98px;
-  min-height: 46px;
+  flex: 0 0 120px;
+  width: 120px;
+  min-width: 120px;
+  max-width: 120px;
+  min-height: 58px;
   padding: 0;
-  font-size: 1rem;
+  font-size: 1.22rem;
   line-height: 1;
   white-space: nowrap;
 }
 
 @container wearable (max-width: 380px) {
   .wearable-screen-with-mode-switch {
-    padding-top: 70px !important;
+    padding-top: 86px !important;
   }
 
   .mode-switch {
     top: 8px !important;
-    min-height: 54px;
-    padding: 5px 6px;
+    min-height: 66px;
+    padding: 7px 8px;
   }
 
   .mode-button {
-    flex-basis: 90px;
-    width: 90px;
-    min-width: 90px;
-    max-width: 90px;
-    min-height: 42px;
-    font-size: 0.94rem;
+    flex-basis: 110px;
+    width: 110px;
+    min-width: 110px;
+    max-width: 110px;
+    min-height: 52px;
+    font-size: 1.08rem;
   }
 }
 
@@ -3070,19 +3080,20 @@ h1 {
   }
 }
 
-/* Align the main wearable screens to the larger expired-QR presentation. */
+/* Keep the wearable frame centered, but scope the large-layout treatment to pairing flows. */
+.wearable-shell {
+  margin-inline: auto;
+  justify-self: center;
+}
+
 .pairing-screen,
 .alert-screen,
 .uwb-screen,
 .emergency-screen,
 .state-screen {
-  justify-items: center;
-  align-content: center;
-  gap: 22px;
   width: 100%;
   min-height: 100%;
   padding: 22px 18px;
-  text-align: center;
 }
 
 .pairing-screen {
@@ -3092,6 +3103,8 @@ h1 {
   justify-items: center !important;
   align-items: center;
   margin-inline: auto;
+  gap: 22px;
+  text-align: center;
 }
 
 .pairing-screen > * {
@@ -3100,12 +3113,43 @@ h1 {
   justify-self: center !important;
 }
 
-.pairing-copy,
-.alert-copy {
+.pairing-copy {
   justify-items: center;
   gap: 14px;
   width: 100%;
   max-width: 340px;
+}
+
+.alert-screen,
+.uwb-screen,
+.emergency-screen,
+.state-screen {
+  gap: 18px;
+  text-align: left;
+}
+
+.alert-copy,
+.uwb-main,
+.guide-copy,
+.screen-message,
+.emergency-copy,
+.state-screen > p:not(.eyebrow):not(.live-message) {
+  width: 100%;
+  max-width: none;
+}
+
+.alert-copy {
+  justify-items: start;
+  gap: 14px;
+}
+
+.alert-screen .alert-copy p,
+.uwb-screen .guide-copy,
+.emergency-screen .emergency-copy,
+.state-screen > p:not(.eyebrow):not(.live-message),
+.alert-screen .live-message,
+.uwb-screen .live-message {
+  max-width: none;
 }
 
 .pairing-screen h1,
@@ -3124,13 +3168,6 @@ h1 {
 .screen-topline,
 .alert-topline {
   font-size: 0.94rem;
-}
-
-.screen-topline,
-.alert-topline {
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px;
 }
 
 .status-badge {
@@ -3196,7 +3233,6 @@ h1 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   width: 100%;
-  max-width: 340px;
 }
 
 .compact-meta div,
@@ -3208,7 +3244,6 @@ h1 {
 .live-status,
 .guardian-sync-note {
   width: 100%;
-  max-width: 340px;
   border-radius: 18px;
   padding: 14px 16px;
 }
@@ -3254,8 +3289,36 @@ h1 {
 
 .action-row {
   width: 100%;
-  max-width: 340px;
   gap: 12px;
+}
+
+.screen-topline,
+.alert-topline {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.pairing-screen .screen-topline,
+.pairing-screen .alert-topline,
+.state-screen .screen-topline {
+  justify-content: center;
+}
+
+.alert-screen .screen-topline,
+.alert-screen .alert-topline,
+.uwb-screen .screen-topline,
+.emergency-screen .screen-topline {
+  justify-content: flex-start;
+}
+
+.alert-screen .compact-meta,
+.uwb-screen .compact-meta,
+.alert-screen .action-row,
+.uwb-screen .live-message,
+.alert-screen .live-message,
+.uwb-screen .uwb-main,
+.uwb-screen .vibration-feedback {
+  max-width: none;
 }
 
 .primary-action,
