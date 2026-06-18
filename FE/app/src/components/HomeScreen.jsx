@@ -10,6 +10,7 @@ import {
   getGuardians,
   updateGuardian,
 } from '../services/guardianService'
+import { AdminAlertBroadcastTab } from './AdminAlertBroadcastTab'
 import { AlertsTab } from './AlertsTab'
 import { DevicesTab } from './DevicesTab'
 import { HomeTab } from './HomeTab'
@@ -31,18 +32,23 @@ function scrollAppContentToTop() {
   window.scrollTo({ top: 0, left: 0 })
 }
 
-const tabs = [
+const ADMIN_ACCOUNT_EMAIL = 'admin@example.com'
+
+const baseTabs = [
   { id: 'home', label: '홈' },
   { id: 'devices', label: '기기' },
   { id: 'alerts', label: '알림' },
   { id: 'menu', label: '설정' },
 ]
 
+const adminTab = { id: 'admin', label: '관리' }
+
 const tabTitles = {
   home: 'Able Band 홈',
   alerts: '실시간 알림',
   devices: '기기와 UWB',
   menu: '설정',
+  admin: '관리',
 }
 
 const MAX_DEVICE_COUNT = 6
@@ -56,6 +62,7 @@ const connectionStatusLabels = {
 export function HomeScreen({ session, onLogout }) {
   const sessionEmail = session.account.email
   const sessionAccessibilityType = session.userProfile?.accessibilityType
+  const isAdminAccount = sessionEmail === ADMIN_ACCOUNT_EMAIL
   const [activeTab, setActiveTab] = useState('home')
   const [alertsScreen, setAlertsScreen] = useState('list')
   const [menuScreen, setMenuScreen] = useState('root')
@@ -97,6 +104,10 @@ export function HomeScreen({ session, onLogout }) {
       },
     }
   }, [sessionAccessibilityType, sessionEmail])
+
+  const visibleTabs = useMemo(() => {
+    return isAdminAccount ? [...baseTabs, adminTab] : baseTabs
+  }, [isAdminAccount])
 
   useEffect(() => {
     let isMounted = true
@@ -194,6 +205,10 @@ export function HomeScreen({ session, onLogout }) {
   }, [activeTab])
 
   function handleTabChange(nextTab) {
+    if (nextTab === 'admin' && !isAdminAccount) {
+      return
+    }
+
     window.dispatchEvent(new Event(CHATBOT_INTERRUPT_EVENT))
     setActiveTab(nextTab)
     setEmergencyMessage('')
@@ -474,10 +489,18 @@ export function HomeScreen({ session, onLogout }) {
         {activeTab === 'menu' && menuScreen === 'wearablePairing' ? (
           <WearablePairingScannerScreen onBack={() => setMenuScreen('root')} />
         ) : null}
+        {activeTab === 'admin' && isAdminAccount ? (
+          <AdminAlertBroadcastTab onBroadcastComplete={handleHomeRefresh} />
+        ) : null}
       </div>
 
-      <nav className="bottom-tabs" aria-label="주요 메뉴">
-        {tabs.map((tab) => (
+      <nav
+        className={
+          visibleTabs.length > baseTabs.length ? 'bottom-tabs bottom-tabs-compact' : 'bottom-tabs'
+        }
+        aria-label="주요 메뉴"
+      >
+        {visibleTabs.map((tab) => (
           <button
             className={activeTab === tab.id ? 'tab-button active' : 'tab-button'}
             type="button"

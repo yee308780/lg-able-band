@@ -2552,6 +2552,10 @@ button:disabled {
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
 }
 
+.bottom-tabs.bottom-tabs-compact {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .tab-button {
   min-height: 42px;
   border: 1px solid transparent;
@@ -2561,6 +2565,11 @@ button:disabled {
   font: inherit;
   font-size: 0.82rem;
   font-weight: 900;
+}
+
+.bottom-tabs-compact .tab-button {
+  padding-inline: 0;
+  font-size: 0.76rem;
 }
 
 .tab-button.active {
@@ -3456,6 +3465,16 @@ h3 {
   .phone-screen {
     padding-left: 14px;
     padding-right: 14px;
+  }
+
+  .bottom-tabs.bottom-tabs-compact {
+    gap: 3px;
+    padding: 5px;
+  }
+
+  .bottom-tabs-compact .tab-button {
+    min-height: 40px;
+    font-size: 0.72rem;
   }
 
   .device-product-grid,

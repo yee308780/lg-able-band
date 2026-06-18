@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 import { mockHomeSummary } from './mocks/homeMock'
@@ -163,6 +163,39 @@ describe('App login to home flow', () => {
     expect(screen.getByText('Able Band가 실시간 안전 상태를 확인 중입니다.')).toBeTruthy()
     expect(screen.getByText('오늘의 안전 상태')).toBeTruthy()
     expect(screen.getByRole('button', { name: '긴급 지원 요청' })).toBeTruthy()
+  })
+
+  it('keeps the management tab hidden for regular USER accounts', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await loginAsUser(user)
+
+    const primaryNav = screen.getByRole('navigation', { name: '주요 메뉴' })
+    expect(within(primaryNav).getByRole('button', { name: '홈' })).toBeTruthy()
+    expect(within(primaryNav).getByRole('button', { name: '기기' })).toBeTruthy()
+    expect(within(primaryNav).getByRole('button', { name: '알림' })).toBeTruthy()
+    expect(within(primaryNav).getByRole('button', { name: '설정' })).toBeTruthy()
+    expect(within(primaryNav).queryByRole('button', { name: '관리' })).toBeNull()
+  })
+
+  it('shows the management tab for the admin USER account', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('radio', { name: '사용자' }))
+    await user.type(screen.getByLabelText('이메일'), 'admin@example.com')
+    await user.type(screen.getByLabelText('비밀번호'), 'password1234')
+    await user.click(screen.getByRole('button', { name: '로그인' }))
+
+    await screen.findByRole('heading', { name: /홈/i })
+    const primaryNav = screen.getByRole('navigation', { name: '주요 메뉴' })
+    await user.click(within(primaryNav).getByRole('button', { name: '관리' }))
+
+    expect(screen.getByRole('heading', { name: '관리' })).toBeTruthy()
+    expect(await screen.findByText('관리자 전용')).toBeTruthy()
+    expect(screen.getByText('알림 발송')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '전체 사용자' })).toBeTruthy()
   })
 
   it('clears a stale stored session and returns to login when an authenticated request gets 401', async () => {
@@ -1150,7 +1183,29 @@ function installMockBackend() {
         accessToken: 'api-guardian-token-4',
       },
     ],
+    [
+      'USER:admin@example.com',
+      {
+        role: 'USER',
+        email: 'admin@example.com',
+        password: 'password1234',
+        accountId: 9,
+        name: '관리자',
+        userId: 9,
+        accessibilityType: 'VISUAL',
+        accessToken: 'api-user-token-admin',
+      },
+    ],
   ])
+  const adminAlertTemplates = [
+    {
+      templateId: 'demo-danger',
+      categoryName: '시연 알림',
+      featureName: '위험 알림',
+      title: '전기레인지 과열 주의',
+      message: '주방에서 위험 신호가 감지되었습니다.',
+    },
+  ]
   let nextAccountId = 3
   let guardians = [
     {
@@ -1238,6 +1293,18 @@ function installMockBackend() {
 
     if (url === `${API_BASE_URL}/api/devices` && method === 'GET') {
       return jsonResponse({ items: devices })
+    }
+
+    if (url === `${API_BASE_URL}/api/admin/alert-templates` && method === 'GET') {
+      return jsonResponse({ items: adminAlertTemplates })
+    }
+
+    if (url === `${API_BASE_URL}/api/admin/alerts/broadcast` && method === 'POST') {
+      return jsonResponse({
+        templateId: body.templateId,
+        audience: body.audience,
+        dispatchedUserCount: body.audience === 'ALL' ? 2 : 1,
+      })
     }
 
     const alertActionMatch = url.match(/\/api\/alerts\/(\d+)\/(confirm|replay)$/)
