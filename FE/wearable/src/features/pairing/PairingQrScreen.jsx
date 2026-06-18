@@ -94,7 +94,7 @@ export function PairingQrScreen({
       <div className="pairing-copy">
         <img className="wearable-brand-logo" src="/LG_Able_Band_wordmark_transparent.png" alt="LG Able Band" />
         <h1 id="pairing-title">앱과 연동</h1>
-        <p>앱에서 QR을 스캔하면 바로 밴드가 연결됩니다.</p>
+        <p>앱에서 QR을 스캔하면 밴드가 연결됩니다.</p>
         <span className="pairing-status" role="status">
           스캔 대기 중
         </span>

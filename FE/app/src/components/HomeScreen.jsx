@@ -640,7 +640,7 @@ function MenuTab({
         <span>
           <p className="card-label">웨어러블 연동</p>
           <strong className="card-title">카메라로 밴드 QR코드 스캔</strong>
-          <p>웨어러블 화면의 QR 코드를 비추면 바로 연결을 시작합니다.</p>
+          <p>웨어러블 화면의 QR 코드를 비추면 연결을 시작합니다.</p>
         </span>
         <span className="wearable-pairing-icon" aria-hidden="true">
           QR

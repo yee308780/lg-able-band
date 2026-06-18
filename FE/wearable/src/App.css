@@ -3069,3 +3069,321 @@ h1 {
     font-size: 0.84rem;
   }
 }
+
+/* Align the main wearable screens to the larger expired-QR presentation. */
+.pairing-screen,
+.alert-screen,
+.uwb-screen,
+.emergency-screen,
+.state-screen {
+  justify-items: center;
+  align-content: center;
+  gap: 22px;
+  width: 100%;
+  min-height: 100%;
+  padding: 22px 18px;
+  text-align: center;
+}
+
+.pairing-screen {
+  justify-content: center !important;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto auto;
+  justify-items: center !important;
+  align-items: center;
+  margin-inline: auto;
+}
+
+.pairing-screen > * {
+  width: 100%;
+  max-width: 344px;
+  justify-self: center !important;
+}
+
+.pairing-copy,
+.alert-copy {
+  justify-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 340px;
+}
+
+.pairing-screen h1,
+.alert-screen h1,
+.uwb-screen h1,
+.emergency-screen h1,
+.state-screen h1,
+.pairing-state-screen h1,
+.pairing-loading-copy strong {
+  font-size: 2.28rem;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.eyebrow,
+.screen-topline,
+.alert-topline {
+  font-size: 0.94rem;
+}
+
+.screen-topline,
+.alert-topline {
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+.status-badge {
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 0.94rem;
+}
+
+.pairing-copy p:not(.eyebrow),
+.alert-copy p,
+.guide-copy,
+.emergency-copy,
+.state-screen > p:not(.eyebrow):not(.live-message),
+.pairing-state-screen p:not(.eyebrow):not(.pairing-state-icon),
+.pairing-loading-copy p {
+  max-width: 340px;
+  font-size: 1.16rem;
+  line-height: 1.58;
+}
+
+.pairing-status {
+  min-height: 36px;
+  padding: 0 15px;
+  font-size: 0.92rem;
+}
+
+.qr-panel {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  gap: 18px;
+  padding: 22px 18px;
+  border-radius: 18px;
+}
+
+.qr-code {
+  width: 240px;
+  height: 240px;
+}
+
+.pairing-meta {
+  justify-items: center;
+  gap: 8px;
+  font-size: 0.96rem;
+}
+
+.pairing-meta strong {
+  font-size: 1.24rem;
+}
+
+.pairing-state-screen {
+  gap: 18px;
+  padding: 22px 18px;
+}
+
+.pairing-state-icon,
+.emergency-mark {
+  width: 74px;
+  height: 74px;
+  font-size: 1.2rem;
+}
+
+.compact-meta {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 340px;
+}
+
+.compact-meta div,
+.standby-meta div,
+.uwb-main,
+.uwb-distance,
+.vibration-feedback,
+.live-message,
+.live-status,
+.guardian-sync-note {
+  width: 100%;
+  max-width: 340px;
+  border-radius: 18px;
+  padding: 14px 16px;
+}
+
+.compact-meta dt,
+.vibration-feedback span:not(.vibration-pulse),
+.uwb-distance p,
+.guardian-sync-note {
+  font-size: 0.88rem;
+}
+
+.compact-meta dd {
+  margin-top: 6px;
+  font-size: 1.04rem;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.uwb-main,
+.uwb-distance,
+.vibration-feedback {
+  gap: 14px;
+}
+
+.uwb-main strong,
+.uwb-distance strong {
+  font-size: 2.56rem;
+}
+
+.vibration-pulse {
+  width: 40px;
+  height: 40px;
+}
+
+.vibration-feedback strong {
+  font-size: 1.12rem;
+}
+
+.signal-warning {
+  font-size: 0.96rem;
+  font-weight: 900;
+}
+
+.action-row {
+  width: 100%;
+  max-width: 340px;
+  gap: 12px;
+}
+
+.primary-action,
+.secondary-action {
+  min-height: 64px;
+  border-radius: 18px;
+  padding: 0 18px;
+  font-size: 1.1rem;
+}
+
+.pager-arrow {
+  min-height: 46px;
+  font-size: 1.7rem;
+}
+
+.pager-dot {
+  width: 10px;
+  height: 10px;
+}
+
+.pager-dot.active {
+  width: 14px;
+  height: 14px;
+}
+
+.pairing-loading-screen {
+  padding: 24px 16px 20px !important;
+}
+
+.pairing-loading-hero {
+  gap: 22px;
+}
+
+.pairing-loading-logo {
+  width: min(100%, 190px);
+}
+
+.pairing-loading-orbit {
+  width: 164px;
+  height: 164px;
+}
+
+.pairing-loading-copy {
+  gap: 14px;
+}
+
+@container wearable (max-width: 380px) {
+  .pairing-screen,
+  .alert-screen,
+  .uwb-screen,
+  .emergency-screen,
+  .state-screen,
+  .pairing-state-screen {
+    gap: 18px;
+    padding: 18px 14px;
+  }
+
+  .pairing-screen h1,
+  .alert-screen h1,
+  .uwb-screen h1,
+  .emergency-screen h1,
+  .state-screen h1,
+  .pairing-state-screen h1,
+  .pairing-loading-copy strong {
+    font-size: 1.88rem;
+  }
+
+  .eyebrow,
+  .screen-topline,
+  .alert-topline,
+  .status-badge {
+    font-size: 0.82rem;
+  }
+
+  .pairing-copy p:not(.eyebrow),
+  .alert-copy p,
+  .guide-copy,
+  .emergency-copy,
+  .state-screen > p:not(.eyebrow):not(.live-message),
+  .pairing-state-screen p:not(.eyebrow):not(.pairing-state-icon),
+  .pairing-loading-copy p,
+  .live-message,
+  .live-status,
+  .guardian-sync-note {
+    font-size: 1rem;
+  }
+
+  .qr-panel,
+  .compact-meta div,
+  .standby-meta div,
+  .uwb-main,
+  .uwb-distance,
+  .vibration-feedback,
+  .live-message,
+  .live-status,
+  .guardian-sync-note {
+    border-radius: 16px;
+    padding: 12px 14px;
+  }
+
+  .qr-code {
+    width: 204px;
+    height: 204px;
+  }
+
+  .pairing-state-icon,
+  .emergency-mark {
+    width: 66px;
+    height: 66px;
+  }
+
+  .uwb-main strong,
+  .uwb-distance strong {
+    font-size: 2.16rem;
+  }
+
+  .primary-action,
+  .secondary-action {
+    min-height: 58px;
+    font-size: 1rem;
+  }
+
+  .pairing-loading-logo {
+    width: min(100%, 166px);
+  }
+
+  .pairing-loading-orbit {
+    width: 144px;
+    height: 144px;
+  }
+}
