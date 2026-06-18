@@ -1095,6 +1095,18 @@ function GuardianConnectionScreen({
   const [deletingGuardianId, setDeletingGuardianId] = useState(null)
   const isPrimaryChecked = guardians.length === 0 || form.isPrimary
 
+  useEffect(() => {
+    if (!message.text) {
+      return undefined
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setMessage({ tone: '', text: '' })
+    }, 2400)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [message])
+
   function handleChange(field, value) {
     setForm((current) => ({
       ...current,
@@ -1221,15 +1233,6 @@ function GuardianConnectionScreen({
           </label>
         </div>
 
-        {message.text ? (
-          <p
-            className={message.tone === 'error' ? 'member-status-message error' : 'member-status-message'}
-            role={message.tone === 'error' ? 'alert' : 'status'}
-          >
-            {message.text}
-          </p>
-        ) : null}
-
         <button className="primary-button full-button" type="submit" disabled={submitting}>
           {submitting ? '연결 중...' : '보호자 등록'}
         </button>
@@ -1281,6 +1284,24 @@ function GuardianConnectionScreen({
           <p className="empty-state">아직 연결된 보호자가 없습니다.</p>
         )}
       </section>
+
+      {message.text ? (
+        <div
+          className="device-toast guardian-toast"
+          role={message.tone === 'error' ? 'alert' : 'status'}
+          aria-live={message.tone === 'error' ? 'assertive' : 'polite'}
+        >
+          <p
+            className={
+              message.tone === 'error'
+                ? 'device-toast-message guardian-toast-message guardian-toast-message-error'
+                : 'device-toast-message guardian-toast-message'
+            }
+          >
+            {message.text}
+          </p>
+        </div>
+      ) : null}
     </section>
   )
 }

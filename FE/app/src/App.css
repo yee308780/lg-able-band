@@ -6635,6 +6635,27 @@ h2 {
   animation: deviceToastFade 2.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
+.guardian-toast {
+  bottom: 112px;
+}
+
+.guardian-toast-message {
+  min-width: min(100%, 280px);
+  padding: 14px 18px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.98);
+  color: #334155;
+  font-size: 0.98rem;
+  font-weight: 600;
+  line-height: 1.55;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16);
+}
+
+.guardian-toast-message-error {
+  background: rgba(255, 241, 242, 0.98);
+  color: #be123c;
+}
+
 @keyframes deviceToastFade {
   0% {
     opacity: 0;
