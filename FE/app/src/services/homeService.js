@@ -2,6 +2,8 @@ import { apiRequest } from './apiClient'
 import { mockHomeSummary } from '../mocks/homeMock'
 import { mockAppPreview, resetMockDevices } from '../mocks/appPreviewMock'
 import { getAlerts } from './alertService'
+import { applyContextAiDemoAlert } from './contextAiDemoAlert'
+import { getContextSafetyStatus } from './contextAiService'
 import { getDevices } from './deviceService'
 
 export async function getHomeSummary() {
@@ -26,6 +28,8 @@ export async function getAppPreview() {
     // Keep the preview usable while the backend alert API is unavailable.
   }
 
+  preview.alerts = applyContextAiDemoAlert(preview.alerts)
+
   try {
     const devices = await getDevices()
     preview.devices = devices
@@ -34,6 +38,24 @@ export async function getAppPreview() {
   }
 
   return preview
+}
+
+export async function applyContextAiSafetyStatus(summary, alerts = []) {
+  const aiSafetyStatus = await getContextSafetyStatus({ alerts, summary })
+  if (!aiSafetyStatus) {
+    return summary
+  }
+
+  return {
+    ...summary,
+    safetyStatus: {
+      ...summary.safetyStatus,
+      level: aiSafetyStatus.level,
+      message: aiSafetyStatus.message || summary.safetyStatus.message,
+      lastCheckedAt: aiSafetyStatus.lastCheckedAt,
+      ai: aiSafetyStatus.ai,
+    },
+  }
 }
 
 function normalizeAlert(alert, fixtures) {
