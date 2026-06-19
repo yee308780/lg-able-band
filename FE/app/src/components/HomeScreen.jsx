@@ -845,7 +845,7 @@ function MenuTab({
 
       <button className="soft-card settings-link-card" type="button" onClick={onOpenLivingSignals}>
         <p className="card-label">생활 신호 설정</p>
-        <strong className="card-title">등록된 생활 알림음을 관리해요.</strong>
+        <strong className="card-title">생활 알림음 등록 및 관리</strong>
         <p>
           현재 {livingSignals.summary.registeredSoundCount}개 신호, 샘플{' '}
           {livingSignals.summary.enrolledClipCount}개가 등록되어 있어요.
@@ -1671,12 +1671,14 @@ function GuardianManagementScreen({
           >
             <span aria-hidden="true">←</span>
           </button>
-          <strong className="card-title" id="guardian-management-title">
-            등록된 보호자를 관리해 주세요.
-          </strong>
+          <div className="guardian-management-heading">
+            <strong className="card-title" id="guardian-management-title">
+              보호자 관리
+            </strong>
+          </div>
         </div>
 
-        <div className="section-title-row">
+        <div className="guardian-management-summary" aria-labelledby="connected-guardian-title">
           <strong className="card-title" id="connected-guardian-title">등록된 보호자</strong>
           <span>{guardians.length}명</span>
         </div>

@@ -1816,8 +1816,14 @@ button:disabled {
 }
 
 .guardian-management-header {
-  align-items: center;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.guardian-management-heading {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
 }
 
 .guardian-management-header .card-title {
@@ -1825,12 +1831,29 @@ button:disabled {
 }
 
 .guardian-management-card {
-  gap: 4px;
+  gap: 10px;
 }
 
-.guardian-management-card .section-title-row {
-  margin-top: -2px;
-  margin-bottom: 0;
+.guardian-management-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #f8fafc;
+}
+
+.guardian-management-summary span {
+  color: #e11d48;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.guardian-management-card .empty-state {
+  margin: 0;
+  padding: 2px 2px 0;
+  line-height: 1.45;
 }
 
 .guardian-management-card .connected-guardian-list {
@@ -7918,16 +7941,26 @@ h2 {
 }
 
 .phone-screen .guardian-management-header {
-  align-items: center !important;
-  gap: 4px !important;
+  align-items: flex-start !important;
+  gap: 8px !important;
 }
 
-.phone-screen .guardian-management-card {
+.phone-screen .guardian-management-heading {
   gap: 3px !important;
 }
 
-.phone-screen .guardian-management-card .section-title-row {
-  margin-top: -2px !important;
+.phone-screen .guardian-management-card {
+  gap: 8px !important;
+}
+
+.phone-screen .guardian-management-summary {
+  padding: 9px 11px !important;
+  border-radius: 10px !important;
+}
+
+.phone-screen .guardian-management-card .empty-state {
+  padding: 0 2px !important;
+  line-height: 1.45 !important;
 }
 
 .phone-screen .guardian-management-card .connected-guardian-item {
