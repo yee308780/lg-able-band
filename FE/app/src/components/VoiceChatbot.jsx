@@ -5,7 +5,7 @@ import { CHATBOT_QUESTION_CATEGORIES, FALLBACK_CHAT_ALERTS } from '../data/chatb
 import { createDevice, getDevices } from '../services/deviceService'
 import { createEmergencyRequest } from '../services/emergencyService'
 import { linkGuardianByEmail } from '../services/guardianService'
-import { CHATBOT_WAKE_EVENT, stopChatbotWakeService } from '../services/chatbotWakeService'
+import { CHATBOT_WAKE_EVENT, startChatbotWakeService, stopChatbotWakeService } from '../services/chatbotWakeService'
 import {
   playGreetingAudio,
   playTurnCueTone,
@@ -385,6 +385,7 @@ export function VoiceChatbot({
       onClose?.()
     } else {
       setIsOpen(false)
+      startChatbotWakeService()
     }
   }
 
@@ -1328,7 +1329,7 @@ export function VoiceChatbot({
     pauseRecognitionForAssistantSpeech()
     setChatbotVoiceState(CHATBOT_VOICE_STATE.SPEAKING)
     const greetingVersion = audioStopVersionRef.current
-    playGreetingAudio().then((played) => {
+    playGreetingAudio().finally(() => {
       if (
         greetingVersion !== audioStopVersionRef.current
         || !conversationActiveRef.current
@@ -1337,12 +1338,7 @@ export function VoiceChatbot({
         return
       }
 
-      if (played) {
-        cueUserTurnAndListen()
-        return
-      }
-
-      speakAndCueUserTurn('무엇을 도와드릴까요')
+      speakAndCueUserTurn('무엇을 도와드릴까요?')
     })
   }
 
