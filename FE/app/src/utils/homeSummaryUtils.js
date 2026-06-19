@@ -50,12 +50,12 @@ export function getActionableRecentAlerts(alerts, limit = ACTIONABLE_ALERT_LIMIT
 }
 
 export function createHomeAlertMetrics(alerts) {
-  const actionableAlerts = alerts.filter(isActionableAlert)
+  const countableAlerts = alerts.filter(isCountableRecentAlert)
 
   return {
-    total: actionableAlerts.length,
-    unread: actionableAlerts.filter((alert) => alert.status === 'UNREAD').length,
-    danger: actionableAlerts.filter(isDangerAlert).length,
+    total: countableAlerts.length,
+    unread: countableAlerts.filter((alert) => alert.status === 'UNREAD').length,
+    danger: countableAlerts.filter(isDangerAlert).length,
   }
 }
 
@@ -122,7 +122,11 @@ export function isEmergencyRequestAlert(alert) {
 }
 
 function isActionableAlert(alert) {
-  return alert.status !== 'CONFIRMED' && !isEmergencyRequestAlert(alert)
+  return alert.status !== 'CONFIRMED' && isCountableRecentAlert(alert)
+}
+
+function isCountableRecentAlert(alert) {
+  return !isEmergencyRequestAlert(alert)
 }
 
 function isDangerAlert(alert) {

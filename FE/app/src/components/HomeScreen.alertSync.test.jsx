@@ -7,7 +7,8 @@ const API_BASE_URL = 'http://localhost:8080'
 
 const session = {
   account: {
-    name: '소희',
+    name: '홍길동',
+    email: 'user@example.com',
   },
   userProfile: {
     accessibilityType: 'VISUAL',
@@ -16,7 +17,7 @@ const session = {
 
 const homeSummary = {
   user: {
-    name: '소희',
+    name: '홍길동',
   },
   safetyStatus: {
     level: 'DANGER',
@@ -60,7 +61,7 @@ const previewAlerts = [
     deviceName: '전기레인지',
     occurredAt: '2026-06-10T14:20:00+09:00',
     status: 'UNREAD',
-    recommendedAction: '전원을 끄고 주변을 확인해 주세요.',
+    recommendedAction: '전원을 끄고 주변 상태를 확인해 주세요.',
   },
 ]
 
@@ -85,11 +86,11 @@ describe('HomeScreen alert summary sync', () => {
     window.localStorage.clear()
   })
 
-  it('removes confirmed alerts from the home real-time summary', async () => {
+  it('keeps confirmed alerts in the alerts tab but hides them from the home summary', async () => {
     const user = userEvent.setup()
     render(<HomeScreen session={session} onLogout={() => {}} />)
 
-    await screen.findByRole('heading', { name: '소희 홈' })
+    await screen.findByRole('heading', { name: '홍길동 홈' })
     expect(screen.getByText('전기레인지 과열 주의')).toBeTruthy()
     expect(screen.getByText('최근 알림 1건')).toBeTruthy()
 
@@ -100,22 +101,22 @@ describe('HomeScreen alert summary sync', () => {
       expect(screen.getByRole('status').textContent).toContain('알림을 확인 완료로 처리했습니다.')
     })
 
-    expect(screen.queryByText('전기레인지 과열 주의')).toBeNull()
-    expect(screen.getByText('조건에 맞는 알림이 없습니다.')).toBeTruthy()
+    expect(screen.getByText('전기레인지 과열 주의')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '전기레인지 과열 주의 확인 완료' })).toBeNull()
 
     await user.click(screen.getByRole('button', { name: '홈' }))
 
     const homeContent = within(screen.getByText('실시간 알림 요약').closest('section'))
     expect(homeContent.queryByText('전기레인지 과열 주의')).toBeNull()
     expect(homeContent.getByText('최근 알림이 없습니다.')).toBeTruthy()
-    expect(screen.getByText('최근 알림 0건')).toBeTruthy()
+    expect(screen.getByText('최근 알림 1건')).toBeTruthy()
   })
 
   it('keeps deleted alerts removed after returning to the alerts tab', async () => {
     const user = userEvent.setup()
     render(<HomeScreen session={session} onLogout={() => {}} />)
 
-    await screen.findByRole('heading', { name: '소희 홈' })
+    await screen.findByRole('heading', { name: '홍길동 홈' })
     await user.click(screen.getByRole('button', { name: '알림' }))
     await user.click(screen.getByRole('button', { name: '전기레인지 과열 주의 삭제' }))
 
@@ -138,9 +139,10 @@ describe('HomeScreen alert summary sync', () => {
     deleteResponseDelay = new Promise((resolve) => {
       resolveDelete = resolve
     })
+
     render(<HomeScreen session={session} onLogout={() => {}} />)
 
-    await screen.findByRole('heading', { name: '소희 홈' })
+    await screen.findByRole('heading', { name: '홍길동 홈' })
     await user.click(screen.getByRole('button', { name: '알림' }))
     await user.click(screen.getByRole('button', { name: '전기레인지 과열 주의 삭제' }))
 
@@ -163,7 +165,7 @@ describe('HomeScreen alert summary sync', () => {
           type: 'DANGER',
           severity: 'HIGH',
           title: '요약 API에만 있는 오래된 알림',
-          message: '이 알림은 알림 탭 목록에는 없습니다.',
+          message: '이 알림은 알림 목록에는 없습니다.',
           deviceName: '요약 센서',
           occurredAt: '2026-06-10T14:10:00+09:00',
           status: 'UNREAD',
@@ -185,7 +187,7 @@ describe('HomeScreen alert summary sync', () => {
 
     render(<HomeScreen session={session} onLogout={() => {}} />)
 
-    await screen.findByRole('heading', { name: '소희 홈' })
+    await screen.findByRole('heading', { name: '홍길동 홈' })
 
     const homeContent = within(screen.getByText('실시간 알림 요약').closest('section'))
     expect(homeContent.queryByText('요약 API에만 있는 오래된 알림')).toBeNull()
@@ -199,7 +201,7 @@ describe('HomeScreen alert summary sync', () => {
     const user = userEvent.setup()
     render(<HomeScreen session={session} onLogout={() => {}} />)
 
-    await screen.findByRole('heading', { name: '소희 홈' })
+    await screen.findByRole('heading', { name: '홍길동 홈' })
     expect(screen.getByText('전기레인지 과열 주의')).toBeTruthy()
 
     currentHomeSummary = {
@@ -217,7 +219,7 @@ describe('HomeScreen alert summary sync', () => {
         severity: 'HIGH',
         title: '새로고침된 최신 알림',
         message: '새로고침 후 홈에서도 보여야 합니다.',
-        deviceName: '새 센서',
+        deviceName: '테스트 센서',
         occurredAt: '2026-06-10T14:40:00+09:00',
         status: 'UNREAD',
       },
@@ -230,6 +232,7 @@ describe('HomeScreen alert summary sync', () => {
     })
     expect(screen.queryByText('전기레인지 과열 주의')).toBeNull()
   })
+
   it('polls the latest alerts so new living-signal alerts appear without manual refresh', async () => {
     const user = userEvent.setup()
     render(<HomeScreen session={session} onLogout={() => {}} />)
@@ -282,7 +285,16 @@ async function mockFetch(input, init = {}) {
   }
 
   if (url === `${API_BASE_URL}/api/alerts/201/confirm` && method === 'POST') {
-    return jsonResponse({ ...currentPreviewAlerts[0], status: 'CONFIRMED' })
+    currentPreviewAlerts = currentPreviewAlerts.map((alert) =>
+      alert.alertId === 201 ? { ...alert, status: 'CONFIRMED' } : alert,
+    )
+    currentHomeSummary = {
+      ...currentHomeSummary,
+      recentAlerts: currentHomeSummary.recentAlerts.map((alert) =>
+        alert.alertId === 201 ? { ...alert, status: 'CONFIRMED' } : alert,
+      ),
+    }
+    return jsonResponse(currentPreviewAlerts[0])
   }
 
   if (url === `${API_BASE_URL}/api/alerts/201` && method === 'DELETE') {

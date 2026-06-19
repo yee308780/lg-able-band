@@ -43,7 +43,7 @@ describe('home summary utilities', () => {
 
     expect(getActionableRecentAlerts(alerts).map((alert) => alert.alertId)).toEqual([2])
     expect(createHomeAlertMetrics(alerts)).toEqual({
-      total: 3,
+      total: 4,
       unread: 1,
       danger: 3,
     })
