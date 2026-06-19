@@ -158,6 +158,26 @@ describe('VoiceChatbot info agent response', () => {
     await user.click(screen.getByRole('button', { name: '정보 후속 질문 닫기' }))
 
     expect(screen.queryByLabelText('정보 후속 질문')).toBeNull()
+    expect(screen.getByLabelText('다른 복지정보 추천 질문')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '장애인 의료비 지원 알려줘' })).toBeNull()
+    expect(screen.getByRole('button', { name: '장애인 활동지원 서비스 알려줘' })).toBeTruthy()
+  })
+
+  it('opens the assistant on the feature selection screen without scrolling into chat', async () => {
+    const user = userEvent.setup()
+
+    render(<VoiceChatbot preview={{}} session={{}} summary={{}} />)
+    await user.click(screen.getByRole('button', { name: '음성 챗봇 열기' }))
+
+    expect(screen.getByRole('button', { name: '대신 말하기 화면으로 이동' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '챗봇과 대화하기 화면으로 이동' })).toBeTruthy()
+    expect(screen.queryByLabelText('인식된 문장')).toBeNull()
+    expect(window.HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: '챗봇과 대화하기 화면으로 이동' }))
+
+    expect(screen.getByLabelText('질문 카테고리')).toBeTruthy()
+    expect(window.HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled()
   })
 
   it('shows categories first, then sends a category recommendation through the existing API', async () => {
@@ -586,10 +606,8 @@ describe('VoiceChatbot info agent response', () => {
 
 async function openTalkMode(user) {
   await user.click(screen.getByRole('button', { name: '음성 챗봇 열기' }))
-  const talkButton = screen.queryByRole('button', { name: '챗봇과 대화하기 화면으로 이동' })
-  if (talkButton) {
-    await user.click(talkButton)
-  }
+  const talkButton = await screen.findByRole('button', { name: '챗봇과 대화하기 화면으로 이동' })
+  await user.click(talkButton)
 }
 
 function mockVoiceChatResponse(data) {

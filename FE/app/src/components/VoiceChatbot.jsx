@@ -5,7 +5,7 @@ import { CHATBOT_QUESTION_CATEGORIES, FALLBACK_CHAT_ALERTS } from '../data/chatb
 import { createDevice, getDevices } from '../services/deviceService'
 import { createEmergencyRequest } from '../services/emergencyService'
 import { linkGuardianByEmail } from '../services/guardianService'
-import { stopChatbotWakeService } from '../services/chatbotWakeService'
+import { CHATBOT_WAKE_EVENT, stopChatbotWakeService } from '../services/chatbotWakeService'
 import {
   playGreetingAudio,
   playTurnCueTone,
@@ -137,6 +137,7 @@ export function VoiceChatbot({
   const [isRequesting, setIsRequesting] = useState(false)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [selectedQuestionCategoryId, setSelectedQuestionCategoryId] = useState(initialQuestionCategoryId)
+  const [alternativeQuestionPrompts, setAlternativeQuestionPrompts] = useState([])
   const [turnCueEnabled, setTurnCueEnabled] = useState(true)
   const [voiceState, setVoiceState] = useState(
     initialOpen ? CHATBOT_VOICE_STATE.OPENING : CHATBOT_VOICE_STATE.CLOSED,
@@ -151,6 +152,7 @@ export function VoiceChatbot({
   const recognitionListeningRef = useRef(false)
   const recognitionStartTimeoutRef = useRef(null)
   const conversationEndRef = useRef(null)
+  const prevMessagesLengthRef = useRef(0)
   const requestInFlightRef = useRef(false)
   const lastInfoAgentRef = useRef(null)
   const chatResetVersionRef = useRef(0)
@@ -165,6 +167,8 @@ export function VoiceChatbot({
   const voiceStateRef = useRef(initialOpen ? CHATBOT_VOICE_STATE.OPENING : CHATBOT_VOICE_STATE.CLOSED)
   const audioStopVersionRef = useRef(0)
   const recognitionFailureCountRef = useRef(0)
+  const recentUserQuestionsRef = useRef([])
+  const wakeOpenChatbotRef = useRef(null)
 
   const supportsSpeechRecognition = Boolean(SpeechRecognition)
   const chatbotContext = useMemo(() => createChatbotContext(summary, preview), [preview, summary])
@@ -176,6 +180,10 @@ export function VoiceChatbot({
   useEffect(() => {
     isOpenRef.current = isOpen
   }, [embedded, isOpen])
+
+  useEffect(() => {
+    wakeOpenChatbotRef.current = () => runChatbotButtonAction(() => openChatbot({ fromWake: true }))
+  })
 
   useEffect(() => {
     if (embedded) {
@@ -198,10 +206,14 @@ export function VoiceChatbot({
   }, [embedded])
 
   useEffect(() => {
-    if (typeof conversationEndRef.current?.scrollIntoView === 'function') {
+    if (
+      messages.length > prevMessagesLengthRef.current &&
+      typeof conversationEndRef.current?.scrollIntoView === 'function'
+    ) {
       conversationEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
     }
-  }, [messages, isListening, status])
+    prevMessagesLengthRef.current = messages.length
+  }, [messages.length])
 
   useEffect(() => {
     function handleExternalInterrupt() {
@@ -217,6 +229,22 @@ export function VoiceChatbot({
     window.addEventListener(CHATBOT_INTERRUPT_EVENT, handleExternalInterrupt)
     return () => {
       window.removeEventListener(CHATBOT_INTERRUPT_EVENT, handleExternalInterrupt)
+    }
+  }, [])
+
+  useEffect(() => {
+    function handleWakeEvent(event) {
+      const transcript = event.detail?.transcript || ''
+      if (transcript && !shouldOpenChatbot(transcript)) {
+        return
+      }
+
+      wakeOpenChatbotRef.current?.()
+    }
+
+    window.addEventListener(CHATBOT_WAKE_EVENT, handleWakeEvent)
+    return () => {
+      window.removeEventListener(CHATBOT_WAKE_EVENT, handleWakeEvent)
     }
   }, [])
 
@@ -352,6 +380,7 @@ export function VoiceChatbot({
     setAssistantMode('select')
     setShowResetConfirm(false)
     setSelectedQuestionCategoryId(null)
+    setAlternativeQuestionPrompts([])
     if (embedded) {
       onClose?.()
     } else {
@@ -378,6 +407,7 @@ export function VoiceChatbot({
     setAssistantMode('select')
     setShowResetConfirm(false)
     setSelectedQuestionCategoryId(null)
+    setAlternativeQuestionPrompts([])
   }
 
   function resetChat() {
@@ -407,6 +437,7 @@ export function VoiceChatbot({
     setStatus('대기 중')
     setShowResetConfirm(false)
     setSelectedQuestionCategoryId(null)
+    setAlternativeQuestionPrompts([])
 
     if (shouldRestartConversation) {
       conversationActiveRef.current = true
@@ -1134,6 +1165,10 @@ export function VoiceChatbot({
     }
 
     const isFollowup = Boolean(displayText && visibleText !== trimmedText)
+    recentUserQuestionsRef.current = [
+      visibleText,
+      ...recentUserQuestionsRef.current.filter((question) => question !== visibleText),
+    ].slice(0, 8)
     const pendingMessage = createChatMessage('bot', '', { pending: true })
     const requestStartedAt = new Date(pendingMessage.createdAt).getTime()
     const requestResetVersion = chatResetVersionRef.current
@@ -1143,6 +1178,7 @@ export function VoiceChatbot({
     setStatus('챗봇 응답 요청 중...')
     setError('')
     setInputText('')
+    setAlternativeQuestionPrompts([])
     setMessages((previousMessages) => [
       ...previousMessages,
       createChatMessage('user', visibleText, { requestText: trimmedText }),
@@ -1457,6 +1493,12 @@ export function VoiceChatbot({
     speechEndTimeoutRef.current = window.setTimeout(handleEnd, fallbackMs)
   }
 
+  function closeFollowupPrompts() {
+    setFollowupPromptResponse(null)
+    setSelectedQuestionCategoryId('welfare')
+    setAlternativeQuestionPrompts(getAlternativeWelfarePrompts(recentUserQuestionsRef.current))
+  }
+
   return (
     <>
       {!embedded ? (
@@ -1464,7 +1506,7 @@ export function VoiceChatbot({
           className="voice-chatbot-fab"
           type="button"
           aria-label="음성 챗봇 열기"
-          onClick={() => runChatbotButtonAction(openChatbot)}
+          onClick={() => runChatbotButtonAction(openAssistant)}
         >
           AI
         </button>
@@ -1552,7 +1594,10 @@ export function VoiceChatbot({
                       <button
                         type="button"
                         className="text-link-button"
-                        onClick={() => runChatbotButtonAction(() => setSelectedQuestionCategoryId(null))}
+                        onClick={() => runChatbotButtonAction(() => {
+                          setSelectedQuestionCategoryId(null)
+                          setAlternativeQuestionPrompts([])
+                        })}
                       >
                         다른 주제 선택
                       </button>
@@ -1582,7 +1627,10 @@ export function VoiceChatbot({
                         key={category.id}
                         aria-label={`${category.title} 선택`}
                         disabled={isRequesting}
-                        onClick={() => runChatbotButtonAction(() => setSelectedQuestionCategoryId(category.id))}
+                        onClick={() => runChatbotButtonAction(() => {
+                          setSelectedQuestionCategoryId(category.id)
+                          setAlternativeQuestionPrompts([])
+                        })}
                       >
                         <span className="voice-start-card-icon voice-category-image-wrap" aria-hidden="true">
                           {category.iconSrc ? (
@@ -1675,7 +1723,7 @@ export function VoiceChatbot({
                   type="button"
                   className="voice-followup-close"
                   aria-label="정보 후속 질문 닫기"
-                  onClick={() => runChatbotButtonAction(() => setFollowupPromptResponse(null))}
+                  onClick={() => runChatbotButtonAction(closeFollowupPrompts)}
                 >
                   닫기
                 </button>
@@ -1696,6 +1744,34 @@ export function VoiceChatbot({
                     </button>
                   )
                 })}
+              </div>
+            </div>
+          ) : null}
+
+          {!hasFollowupPrompts && alternativeQuestionPrompts.length > 0 ? (
+            <div className="voice-followup-block voice-alternative-prompts">
+              <div className="voice-followup-heading">
+                <strong className="voice-followup-label">다른 복지정보 추천 질문</strong>
+                <button
+                  type="button"
+                  className="voice-followup-close"
+                  aria-label="다른 복지정보 추천 질문 닫기"
+                  onClick={() => runChatbotButtonAction(() => setAlternativeQuestionPrompts([]))}
+                >
+                  닫기
+                </button>
+              </div>
+              <div className="voice-followup-row" aria-label="다른 복지정보 추천 질문">
+                {alternativeQuestionPrompts.map((prompt) => (
+                  <button
+                    type="button"
+                    key={prompt}
+                    disabled={isRequesting}
+                    onClick={() => runChatbotButtonAction(() => sendMessage(prompt, true))}
+                  >
+                    {prompt}
+                  </button>
+                ))}
               </div>
             </div>
           ) : null}
@@ -2383,6 +2459,15 @@ function getFollowupPrompts(response) {
   }
 
   return ['지원 대상은 누구야?', '신청 방법 알려줘', '자세히 알려줘']
+}
+
+function getAlternativeWelfarePrompts(recentQuestions = [], limit = 5) {
+  const welfareCategory = CHATBOT_QUESTION_CATEGORIES.find((category) => category.id === 'welfare')
+  const prompts = welfareCategory?.prompts || []
+  const recentQuestionSet = new Set(recentQuestions.map((question) => normalizeSpeechText(question)))
+  const alternatives = prompts.filter((prompt) => !recentQuestionSet.has(normalizeSpeechText(prompt)))
+
+  return (alternatives.length > 0 ? alternatives : prompts).slice(0, limit)
 }
 
 function speechRecognitionErrorMessage(error) {

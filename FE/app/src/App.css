@@ -2751,6 +2751,9 @@ button:disabled {
 }
 
 .voice-message-bubble-user {
+  width: fit-content;
+  max-width: 85%;
+  align-self: flex-end;
   border: 1px solid rgba(29, 78, 216, 0.12);
   border-top-right-radius: 6px;
   background: #eff6ff;
@@ -6413,6 +6416,8 @@ h2 {
 }
 
 .voice-message-bundle-user {
+  justify-self: end;
+  align-self: flex-end;
   justify-items: end;
 }
 
@@ -6422,7 +6427,13 @@ h2 {
 }
 
 .voice-message-bundle .voice-message-bubble {
+  width: fit-content;
   max-width: 100%;
+  white-space: pre-wrap;
+}
+
+.voice-message-bundle-user .voice-message-bubble {
+  max-width: min(100%, 85vw);
 }
 
 .voice-message-bubble-error {
