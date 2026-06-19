@@ -13,3 +13,16 @@ INFO:     127.0.0.1:50296 - "POST /api/info-agent/query HTTP/1.1" 200 OK
 INFO:     127.0.0.1:58187 - "POST /api/info-agent/query HTTP/1.1" 200 OK
 INFO:     127.0.0.1:64395 - "POST /api/info-agent/query HTTP/1.1" 200 OK
 INFO:     127.0.0.1:57808 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52489 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52327 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61912 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51036 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65127 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62019 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57197 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57336 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53458 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62852 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63240 - "POST /api/info-agent/query HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62199 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61042 - "POST /api/info-agent/query HTTP/1.1" 200 OK
