@@ -9013,3 +9013,36 @@ h2 {
   color: #ffffff;
   box-shadow: 0 10px 22px rgba(190, 18, 60, 0.18);
 }
+
+/* Demo-friendly baseline ratio with room to grow on taller phones */
+.phone-screen {
+  --app-demo-height: clamp(560px, 78dvh, 640px);
+  min-height: var(--app-demo-height);
+}
+
+.app-screen {
+  height: min(100dvh, var(--app-demo-height));
+  max-height: var(--app-demo-height);
+}
+
+.phone-screen.login-screen,
+.phone-screen.signup-screen,
+.phone-screen.placeholder-screen {
+  min-height: clamp(620px, 82dvh, 700px);
+}
+
+.phone-screen.login-screen .login-brand-logo {
+  width: min(76%, 216px);
+}
+
+@media (min-height: 780px) {
+  .phone-screen {
+    --app-demo-height: clamp(580px, 82dvh, 680px);
+  }
+}
+
+@media (min-height: 860px) {
+  .phone-screen {
+    --app-demo-height: clamp(600px, 84dvh, 720px);
+  }
+}

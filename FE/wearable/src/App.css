@@ -4632,6 +4632,11 @@ h1 {
 
 /* Full-viewport responsive wearable layout for demo and device-sized screens */
 .app-root {
+  --wearable-demo-aspect-width: 520;
+  --wearable-demo-aspect-height: 884;
+}
+
+.app-root {
   width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
@@ -4641,11 +4646,11 @@ h1 {
 }
 
 .wearable-shell {
-  width: min(100vw, calc(100dvh * 452 / 884));
-  height: min(100dvh, calc(100vw * 884 / 452));
+  width: min(100vw, calc(100dvh * var(--wearable-demo-aspect-width) / var(--wearable-demo-aspect-height)));
+  height: min(100dvh, calc(100vw * var(--wearable-demo-aspect-height) / var(--wearable-demo-aspect-width)));
   max-width: 100vw;
   max-height: 100dvh;
-  aspect-ratio: 452 / 884;
+  aspect-ratio: var(--wearable-demo-aspect-width) / var(--wearable-demo-aspect-height);
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -4664,14 +4669,14 @@ h1 {
     calc(clamp(14px, 3.2vw, 22px) + env(safe-area-inset-bottom));
 }
 
-@media (max-aspect-ratio: 452/884) {
+@media (max-aspect-ratio: 520/884) {
   .wearable-shell {
     width: 100vw;
     height: auto;
   }
 }
 
-@media (min-aspect-ratio: 452/884) {
+@media (min-aspect-ratio: 520/884) {
   .wearable-shell {
     width: auto;
     height: 100dvh;
@@ -4681,7 +4686,7 @@ h1 {
 .wearable-screen {
   padding:
     calc(clamp(10px, 2.4vw, 16px) + env(safe-area-inset-top))
-    clamp(6px, 1.8vw, 12px)
+    clamp(2px, 1vw, 8px)
     calc(clamp(12px, 2.8vw, 18px) + env(safe-area-inset-bottom));
 }
 
