@@ -4,6 +4,7 @@ export const CHATBOT_WAKE_EVENT = 'able-band:chatbot-wake'
 
 let recognition = null
 let enabled = false
+let starting = false
 let listening = false
 let restartTimer = null
 let pendingWake = false
@@ -73,6 +74,11 @@ function ensureRecognition() {
   nextRecognition.continuous = preferContinuousRecognition
   nextRecognition.maxAlternatives = 1
 
+  nextRecognition.onstart = () => {
+    starting = false
+    listening = true
+  }
+
   nextRecognition.onresult = (event) => {
     const transcript = Array.from(event.results)
       .map((result) => result[0].transcript)
@@ -80,6 +86,7 @@ function ensureRecognition() {
 
     if (shouldOpenChatbot(transcript)) {
       enabled = false
+      starting = false
       listening = false
       wakeTranscriptToDispatch = transcript
       nextRecognition.abort?.()
@@ -88,14 +95,21 @@ function ensureRecognition() {
   }
 
   nextRecognition.onerror = (event) => {
+    starting = false
     listening = false
 
-    if (enabled && !['not-allowed', 'service-not-allowed'].includes(event.error)) {
+    if (['not-allowed', 'service-not-allowed', 'audio-capture'].includes(event.error)) {
+      recognition = null
+      return
+    }
+
+    if (enabled) {
       scheduleWakeStart(700)
     }
   }
 
   nextRecognition.onend = () => {
+    starting = false
     listening = false
 
     if (wakeTranscriptToDispatch) {
@@ -119,7 +133,7 @@ export function startChatbotWakeService() {
 
   enabled = true
 
-  if (listening) {
+  if (starting || listening) {
     return true
   }
 
@@ -129,10 +143,12 @@ export function startChatbotWakeService() {
   }
 
   try {
+    starting = true
     listening = true
     nextRecognition.start()
     return true
   } catch {
+    starting = false
     listening = false
     if (preferContinuousRecognition) {
       preferContinuousRecognition = false
@@ -148,6 +164,7 @@ export function startChatbotWakeService() {
 
 export function stopChatbotWakeService() {
   enabled = false
+  starting = false
   listening = false
 
   if (typeof window !== 'undefined') {
