@@ -5,7 +5,6 @@ import { CHATBOT_QUESTION_CATEGORIES, FALLBACK_CHAT_ALERTS } from '../data/chatb
 import { createDevice, getDevices } from '../services/deviceService'
 import { createEmergencyRequest } from '../services/emergencyService'
 import { linkGuardianByEmail } from '../services/guardianService'
-import { CHATBOT_WAKE_EVENT, startChatbotWakeService, stopChatbotWakeService } from '../services/chatbotWakeService'
 import {
   playGreetingAudio,
   playTurnCueTone,
@@ -14,11 +13,13 @@ import {
 } from '../services/turnCueAudioService'
 import { handleStructuredVoiceCommand } from '../services/voiceIntentEngine'
 import { requestVoiceChat } from '../services/voiceChatbotService'
+import {
+  CHATBOT_WAKE_EVENT,
+  startChatbotWakeService,
+  stopChatbotWakeService,
+} from '../services/chatbotWakeService'
 import { normalizeSpeechText, shouldCloseChatbot, shouldOpenChatbot } from '../utils/chatbotWake'
 
-export { shouldOpenChatbot } from '../utils/chatbotWake'
-
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
 export const CHATBOT_INTERRUPT_EVENT = 'lg-able-band:interrupt-chatbot'
 
 const CHATBOT_VOICE_STATE = {
@@ -170,7 +171,7 @@ export function VoiceChatbot({
   const recentUserQuestionsRef = useRef([])
   const wakeOpenChatbotRef = useRef(null)
 
-  const supportsSpeechRecognition = Boolean(SpeechRecognition)
+  const supportsSpeechRecognition = Boolean(getSpeechRecognitionConstructor())
   const chatbotContext = useMemo(() => createChatbotContext(summary, preview), [preview, summary])
   const hasFollowupPrompts = Boolean(followupPromptResponse?.infoCard)
   const selectedQuestionCategory = CHATBOT_QUESTION_CATEGORIES.find(
@@ -199,6 +200,7 @@ export function VoiceChatbot({
       window.clearTimeout(speechStartDelayTimeoutRef.current)
       window.clearTimeout(speechRetryTimeoutRef.current)
       window.clearTimeout(turnCueTimeoutRef.current)
+      stopChatbotWakeService()
       recognitionRef.current?.stop()
       window.speechSynthesis?.cancel()
       stopTurnCueAudio()
@@ -249,6 +251,19 @@ export function VoiceChatbot({
   }, [])
 
   useEffect(() => {
+    if (!supportsSpeechRecognition || embedded || isOpen) {
+      stopChatbotWakeService()
+      return undefined
+    }
+
+    startChatbotWakeService()
+
+    return () => {
+      stopChatbotWakeService()
+    }
+  }, [embedded, isOpen, supportsSpeechRecognition])
+
+  useEffect(() => {
     if (assistantMode !== 'talk' || !conversationActiveRef.current || manualStopRef.current) {
       return
     }
@@ -280,7 +295,7 @@ export function VoiceChatbot({
 
   function openAssistant() {
     isOpenRef.current = true
-    stopWakeListening()
+    stopChatbotWakeService()
     unlockTurnCueAudio()
     conversationActiveRef.current = false
     manualStopRef.current = false
@@ -293,7 +308,7 @@ export function VoiceChatbot({
 
   function openChatbot(options = {}) {
     isOpenRef.current = true
-    stopWakeListening()
+    stopChatbotWakeService()
     unlockTurnCueAudio()
     conversationActiveRef.current = true
     manualStopRef.current = false
@@ -390,7 +405,6 @@ export function VoiceChatbot({
       onClose?.()
     } else {
       setIsOpen(false)
-      startChatbotWakeService()
     }
   }
 
@@ -460,12 +474,8 @@ export function VoiceChatbot({
     }
   }
 
-  function stopWakeListening() {
-    stopChatbotWakeService()
-    return false
-  }
-
   function ensureRecognition() {
+    const SpeechRecognition = getSpeechRecognitionConstructor()
     if (!SpeechRecognition) {
       return null
     }
@@ -590,7 +600,7 @@ export function VoiceChatbot({
       return
     }
 
-    stopWakeListening()
+    stopChatbotWakeService()
     recognitionStartingRef.current = true
     setChatbotVoiceState(CHATBOT_VOICE_STATE.LISTENING)
     setStatus('마이크 연결 중...')
@@ -2090,6 +2100,10 @@ function createKoreanUtterance(text) {
   }
 
   return utterance
+}
+
+function getSpeechRecognitionConstructor() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition
 }
 
 function isDeviceAddCommand(text) {

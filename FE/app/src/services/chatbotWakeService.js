@@ -2,97 +2,328 @@ import { shouldOpenChatbot } from '../utils/chatbotWake'
 
 export const CHATBOT_WAKE_EVENT = 'able-band:chatbot-wake'
 
-const WAKE_RESTART_DELAY_MS = 100
-const WAKE_BLOCKED_RESTART_DELAY_MS = 1500
+const NORMAL_RESTART_DELAY_MS = 700
+const QUICK_END_THRESHOLD_MS = 1200
+const QUICK_END_RESTART_DELAYS_MS = [1500, 3000, 5000]
+const BLOCKED_RESTART_DELAY_MS = 3000
 const WAKE_STUCK_RESTART_MS = 7000
 const WAKE_START_GUARD_MS = 2500
+const WAKE_DISPATCH_DELAY_MS = 80
+const MAX_WAKE_TRANSCRIPT_LENGTH = 160
 
 let recognition = null
-let enabled = false
+let wakeDesired = false
 let starting = false
 let listening = false
 let restartTimer = null
-let pendingWake = false
-let preferContinuousRecognition = true
-let wakeTranscriptToDispatch = ''
-let wakeDispatchTimer = null
+let startGuardTimer = null
+let watchdogTimer = null
+let dispatchTimer = null
+let activeSessionId = 0
+let lastStartAt = 0
+let quickEndCount = 0
 let wakeTranscriptBuffer = ''
-let wakeMatched = false
-let wakeSilenceTimer = null
-let wakeStartGuardTimer = null
+let preferContinuousRecognition = true
 
-function getSpeechRecognition() {
+export function startChatbotWakeService() {
   if (typeof window === 'undefined') {
-    return null
+    return false
   }
 
-  return window.SpeechRecognition || window.webkitSpeechRecognition || null
+  wakeDesired = true
+
+  if (!canRunWakeRecognition()) {
+    return false
+  }
+
+  if (recognition || starting || listening) {
+    return true
+  }
+
+  return startRecognitionSession()
 }
 
-function dispatchWake(transcript) {
+export function stopChatbotWakeService() {
+  wakeDesired = false
+  activeSessionId += 1
+  clearWakeTimers()
+  starting = false
+  listening = false
+  wakeTranscriptBuffer = ''
+  quickEndCount = 0
+
+  const currentRecognition = recognition
+  recognition = null
+
+  try {
+    currentRecognition?.abort?.()
+  } catch {
+    // The browser can already have stopped the recognition session.
+  }
+
+  return false
+}
+
+export function subscribeChatbotWake(callback) {
   if (typeof window === 'undefined') {
+    return () => {}
+  }
+
+  function handleWake(event) {
+    callback(event.detail || {})
+  }
+
+  window.addEventListener(CHATBOT_WAKE_EVENT, handleWake)
+  return () => {
+    window.removeEventListener(CHATBOT_WAKE_EVENT, handleWake)
+  }
+}
+
+function startRecognitionSession() {
+  const SpeechRecognition = getSpeechRecognitionConstructor()
+  if (!SpeechRecognition) {
+    wakeDesired = false
+    return false
+  }
+
+  clearWakeTimers()
+
+  const nextRecognition = new SpeechRecognition()
+  const sessionId = activeSessionId + 1
+  activeSessionId = sessionId
+  recognition = nextRecognition
+  starting = true
+  listening = false
+  lastStartAt = Date.now()
+  wakeTranscriptBuffer = ''
+
+  nextRecognition.lang = 'ko-KR'
+  nextRecognition.interimResults = true
+  nextRecognition.continuous = preferContinuousRecognition
+  nextRecognition.maxAlternatives = 5
+
+  nextRecognition.onstart = () => {
+    if (!isCurrentSession(sessionId, nextRecognition)) {
+      return
+    }
+
+    window.clearTimeout(startGuardTimer)
+    starting = false
+    listening = true
+    wakeTranscriptBuffer = ''
+    scheduleWatchdog(sessionId, nextRecognition)
+  }
+
+  nextRecognition.onresult = (event) => {
+    if (!isCurrentSession(sessionId, nextRecognition)) {
+      return
+    }
+
+    scheduleWatchdog(sessionId, nextRecognition)
+    const heard = cleanupRecognizedSpeech(
+      Array.from(event.results || [])
+        .flatMap((result) => getRecognitionAlternatives(result))
+        .filter(Boolean)
+        .join(' '),
+    )
+    if (!heard) {
+      return
+    }
+
+    wakeTranscriptBuffer = `${wakeTranscriptBuffer} ${heard}`.slice(-MAX_WAKE_TRANSCRIPT_LENGTH)
+    const wakeText = `${heard} ${wakeTranscriptBuffer}`
+    if (shouldOpenChatbot(wakeText)) {
+      completeWakeMatch(sessionId, nextRecognition, wakeText)
+    }
+  }
+
+  nextRecognition.onerror = async (event) => {
+    if (!isCurrentSession(sessionId, nextRecognition)) {
+      return
+    }
+
+    const error = event?.error || ''
+    cleanupCurrentSession()
+
+    if (['not-allowed', 'service-not-allowed', 'audio-capture'].includes(error)) {
+      const permissionDenied = await isMicrophonePermissionDenied()
+      if (permissionDenied || !wakeDesired) {
+        wakeDesired = false
+        return
+      }
+
+      scheduleRestart(BLOCKED_RESTART_DELAY_MS)
+      return
+    }
+
+    if (error === 'aborted' && !wakeDesired) {
+      return
+    }
+
+    scheduleRestart(getRestartDelay())
+  }
+
+  nextRecognition.onend = () => {
+    if (!isCurrentSession(sessionId, nextRecognition)) {
+      return
+    }
+
+    cleanupCurrentSession()
+    scheduleRestart(getRestartDelay())
+  }
+
+  nextRecognition.onnomatch = () => {
+    if (isCurrentSession(sessionId, nextRecognition)) {
+      wakeTranscriptBuffer = ''
+    }
+  }
+
+  scheduleStartGuard(sessionId, nextRecognition)
+
+  try {
+    nextRecognition.start()
+    return true
+  } catch {
+    cleanupCurrentSession()
+    if (preferContinuousRecognition) {
+      preferContinuousRecognition = false
+      scheduleRestart(NORMAL_RESTART_DELAY_MS)
+      return false
+    }
+
+    scheduleRestart(BLOCKED_RESTART_DELAY_MS)
+    return false
+  }
+}
+
+function completeWakeMatch(sessionId, currentRecognition, transcript) {
+  if (!isCurrentSession(sessionId, currentRecognition)) {
     return
   }
 
-  window.clearTimeout(wakeDispatchTimer)
-  wakeTranscriptToDispatch = ''
-  pendingWake = true
-  window.dispatchEvent(new CustomEvent(CHATBOT_WAKE_EVENT, {
-    detail: {
-      transcript,
-    },
-  }))
-}
+  wakeDesired = false
+  activeSessionId += 1
+  clearWakeTimers()
+  quickEndCount = 0
+  cleanupCurrentSession()
 
-function scheduleWakeDispatch(transcript, delayMs = 450) {
-  if (typeof window === 'undefined') {
-    return
+  try {
+    currentRecognition.abort?.()
+  } catch {
+    // Recognition can already be stopped by the browser.
   }
 
-  wakeTranscriptToDispatch = transcript
-  window.clearTimeout(wakeDispatchTimer)
-  wakeDispatchTimer = window.setTimeout(() => {
-    dispatchWake(wakeTranscriptToDispatch)
-  }, delayMs)
+  dispatchTimer = window.setTimeout(() => {
+    window.dispatchEvent(new CustomEvent(CHATBOT_WAKE_EVENT, {
+      detail: { transcript },
+    }))
+  }, WAKE_DISPATCH_DELAY_MS)
 }
 
-function clearWakeStartGuard() {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  window.clearTimeout(wakeStartGuardTimer)
-  wakeStartGuardTimer = null
-}
-
-function clearWakeWatchdog() {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  window.clearTimeout(wakeSilenceTimer)
-  wakeSilenceTimer = null
-}
-
-function scheduleWakeStart(delayMs = WAKE_RESTART_DELAY_MS) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
+function scheduleRestart(delayMs) {
   window.clearTimeout(restartTimer)
+  if (!shouldRestart()) {
+    return
+  }
+
   restartTimer = window.setTimeout(() => {
-    if (enabled) {
-      startChatbotWakeService()
+    restartTimer = null
+    if (shouldRestart()) {
+      startRecognitionSession()
     }
   }, delayMs)
 }
 
-function resetWakeSession(currentRecognition = recognition) {
-  if (recognition === currentRecognition) {
-    recognition = null
+function scheduleWatchdog(sessionId, currentRecognition) {
+  window.clearTimeout(watchdogTimer)
+  if (!isCurrentSession(sessionId, currentRecognition)) {
+    return
   }
+
+  watchdogTimer = window.setTimeout(() => {
+    if (!isCurrentSession(sessionId, currentRecognition)) {
+      return
+    }
+
+    cleanupCurrentSession()
+    activeSessionId += 1
+    try {
+      currentRecognition.abort?.()
+    } catch {
+      // Recognition can already be stopped.
+    }
+    scheduleRestart(BLOCKED_RESTART_DELAY_MS)
+  }, WAKE_STUCK_RESTART_MS)
+}
+
+function scheduleStartGuard(sessionId, currentRecognition) {
+  window.clearTimeout(startGuardTimer)
+  startGuardTimer = window.setTimeout(() => {
+    if (!isCurrentSession(sessionId, currentRecognition)) {
+      return
+    }
+
+    cleanupCurrentSession()
+    activeSessionId += 1
+    try {
+      currentRecognition.abort?.()
+    } catch {
+      // Recognition can already be stopped.
+    }
+    scheduleRestart(BLOCKED_RESTART_DELAY_MS)
+  }, WAKE_START_GUARD_MS)
+}
+
+function cleanupCurrentSession() {
+  window.clearTimeout(startGuardTimer)
+  window.clearTimeout(watchdogTimer)
+  startGuardTimer = null
+  watchdogTimer = null
+  recognition = null
   starting = false
   listening = false
+  wakeTranscriptBuffer = ''
+}
+
+function clearWakeTimers() {
+  window.clearTimeout(restartTimer)
+  window.clearTimeout(startGuardTimer)
+  window.clearTimeout(watchdogTimer)
+  window.clearTimeout(dispatchTimer)
+  restartTimer = null
+  startGuardTimer = null
+  watchdogTimer = null
+  dispatchTimer = null
+}
+
+function getRestartDelay() {
+  const aliveMs = Date.now() - lastStartAt
+  if (aliveMs < QUICK_END_THRESHOLD_MS) {
+    quickEndCount += 1
+    return QUICK_END_RESTART_DELAYS_MS[Math.min(
+      quickEndCount - 1,
+      QUICK_END_RESTART_DELAYS_MS.length - 1,
+    )]
+  }
+
+  quickEndCount = 0
+  return NORMAL_RESTART_DELAY_MS
+}
+
+function shouldRestart() {
+  return wakeDesired && canRunWakeRecognition() && !recognition && !starting && !listening
+}
+
+function canRunWakeRecognition() {
+  return Boolean(getSpeechRecognitionConstructor()) && document.visibilityState !== 'hidden'
+}
+
+function isCurrentSession(sessionId, currentRecognition) {
+  return activeSessionId === sessionId && recognition === currentRecognition
+}
+
+function getSpeechRecognitionConstructor() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition
 }
 
 function getRecognitionAlternatives(result) {
@@ -100,8 +331,7 @@ function getRecognitionAlternatives(result) {
     return []
   }
 
-  return Array.from({ length: result.length }, (_, index) => result[index]?.transcript || '')
-    .filter(Boolean)
+  return Array.from({ length: result.length }, (_, index) => result[index]?.transcript || '').filter(Boolean)
 }
 
 function cleanupRecognizedSpeech(text) {
@@ -132,232 +362,11 @@ function cleanupRecognizedSpeech(text) {
   return dedupedWords.join(' ')
 }
 
-function scheduleWakeWatchdog(currentRecognition) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  clearWakeWatchdog()
-
-  if (!enabled || !currentRecognition || recognition !== currentRecognition) {
-    return
-  }
-
-  wakeSilenceTimer = window.setTimeout(() => {
-    if (!enabled || recognition !== currentRecognition) {
-      return
-    }
-
-    try {
-      currentRecognition.abort?.()
-    } catch {
-      // Recognition can already be stopped by the browser.
-    }
-
-    resetWakeSession(currentRecognition)
-    wakeTranscriptBuffer = ''
-    wakeMatched = false
-    scheduleWakeStart(WAKE_BLOCKED_RESTART_DELAY_MS)
-  }, WAKE_STUCK_RESTART_MS)
-}
-
-function scheduleWakeStartGuard(currentRecognition) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  clearWakeStartGuard()
-
-  wakeStartGuardTimer = window.setTimeout(() => {
-    if (!enabled || recognition !== currentRecognition) {
-      return
-    }
-
-    try {
-      currentRecognition.abort?.()
-    } catch {
-      // Recognition can already be stopped by the browser.
-    }
-
-    resetWakeSession(currentRecognition)
-    wakeTranscriptBuffer = ''
-    wakeMatched = false
-    scheduleWakeStart(WAKE_BLOCKED_RESTART_DELAY_MS)
-  }, WAKE_START_GUARD_MS)
-}
-
-function ensureRecognition() {
-  const SpeechRecognition = getSpeechRecognition()
-  if (!SpeechRecognition) {
-    return null
-  }
-
-  if (recognition) {
-    return recognition
-  }
-
-  const nextRecognition = new SpeechRecognition()
-  nextRecognition.lang = 'ko-KR'
-  nextRecognition.interimResults = true
-  nextRecognition.continuous = preferContinuousRecognition
-  nextRecognition.maxAlternatives = 5
-
-  nextRecognition.onstart = () => {
-    clearWakeStartGuard()
-    starting = false
-    listening = true
-    wakeMatched = false
-    wakeTranscriptBuffer = ''
-    scheduleWakeWatchdog(nextRecognition)
-  }
-
-  nextRecognition.onresult = (event) => {
-    scheduleWakeWatchdog(nextRecognition)
-    const heardCandidates = Array.from(event.results)
-      .flatMap((result) => getRecognitionAlternatives(result))
-      .filter(Boolean)
-    const heard = cleanupRecognizedSpeech(heardCandidates.join(' '))
-    wakeTranscriptBuffer = `${wakeTranscriptBuffer} ${heard}`.slice(-160)
-    const transcript = `${heard} ${wakeTranscriptBuffer}`.trim()
-
-    if (shouldOpenChatbot(transcript)) {
-      wakeMatched = true
-      enabled = false
-      resetWakeSession(nextRecognition)
-      clearWakeStartGuard()
-      clearWakeWatchdog()
-      wakeTranscriptToDispatch = transcript
-      nextRecognition.abort?.()
-      scheduleWakeDispatch(transcript, 250)
-    }
-  }
-
-  nextRecognition.onerror = (event) => {
-    clearWakeStartGuard()
-    clearWakeWatchdog()
-    if (recognition !== nextRecognition) {
-      return
-    }
-
-    resetWakeSession(nextRecognition)
-
-    if (['not-allowed', 'service-not-allowed', 'audio-capture'].includes(event.error)) {
-      return
-    }
-
-    if (enabled) {
-      scheduleWakeStart(WAKE_BLOCKED_RESTART_DELAY_MS)
-    }
-  }
-
-  nextRecognition.onend = () => {
-    clearWakeStartGuard()
-    clearWakeWatchdog()
-    const isCurrentSession = recognition === nextRecognition
-    if (isCurrentSession) {
-      resetWakeSession(nextRecognition)
-    }
-
-    if (wakeTranscriptToDispatch) {
-      scheduleWakeDispatch(wakeTranscriptToDispatch, 250)
-      return
-    }
-
-    if (!isCurrentSession) {
-      return
-    }
-
-    if (wakeMatched) {
-      return
-    }
-
-    if (enabled) {
-      scheduleWakeStart(WAKE_RESTART_DELAY_MS)
-    }
-  }
-
-  recognition = nextRecognition
-  return recognition
-}
-
-export function startChatbotWakeService() {
-  if (typeof window === 'undefined') {
-    return false
-  }
-
-  enabled = true
-
-  if (starting || listening) {
-    return true
-  }
-
-  const nextRecognition = ensureRecognition()
-  if (!nextRecognition) {
-    return false
-  }
-
+async function isMicrophonePermissionDenied() {
   try {
-    starting = true
-    listening = true
-    scheduleWakeStartGuard(nextRecognition)
-    nextRecognition.start()
-    return true
+    const permissionStatus = await window.navigator?.permissions?.query?.({ name: 'microphone' })
+    return permissionStatus?.state === 'denied'
   } catch {
-    clearWakeStartGuard()
-    clearWakeWatchdog()
-    resetWakeSession(nextRecognition)
-    if (preferContinuousRecognition) {
-      preferContinuousRecognition = false
-    }
-
-    if (enabled) {
-      scheduleWakeStart(WAKE_BLOCKED_RESTART_DELAY_MS)
-    }
     return false
-  }
-}
-
-export function stopChatbotWakeService() {
-  enabled = false
-  starting = false
-  listening = false
-
-  if (typeof window !== 'undefined') {
-    window.clearTimeout(restartTimer)
-    window.clearTimeout(wakeDispatchTimer)
-  }
-  clearWakeStartGuard()
-  clearWakeWatchdog()
-
-  wakeTranscriptToDispatch = ''
-  wakeTranscriptBuffer = ''
-  wakeMatched = false
-  recognition?.abort?.()
-  recognition = null
-}
-
-export function subscribeChatbotWake(callback) {
-  if (typeof window === 'undefined') {
-    return () => {}
-  }
-
-  const handleWake = (event) => {
-    pendingWake = false
-    callback(event.detail?.transcript || '')
-  }
-
-  window.addEventListener(CHATBOT_WAKE_EVENT, handleWake)
-
-  if (pendingWake) {
-    window.setTimeout(() => {
-      if (pendingWake) {
-        pendingWake = false
-        callback('')
-      }
-    }, 0)
-  }
-
-  return () => {
-    window.removeEventListener(CHATBOT_WAKE_EVENT, handleWake)
   }
 }

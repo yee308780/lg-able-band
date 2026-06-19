@@ -1,12 +1,6 @@
-import { render, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { HomeScreen } from './HomeScreen'
-import { startChatbotWakeService, stopChatbotWakeService } from '../services/chatbotWakeService'
-
-vi.mock('../services/chatbotWakeService', () => ({
-  startChatbotWakeService: vi.fn(() => true),
-  stopChatbotWakeService: vi.fn(),
-}))
 
 vi.mock('./VoiceChatbot', () => ({
   CHATBOT_INTERRUPT_EVENT: 'lg-able-band:interrupt-chatbot',
@@ -79,21 +73,15 @@ const session = {
   },
 }
 
-describe('HomeScreen chatbot wake service', () => {
+describe('HomeScreen chatbot wake ownership', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     window.scrollTo = vi.fn()
   })
 
-  it('starts wake listening while the user home screen is mounted', async () => {
-    const { unmount } = render(<HomeScreen session={session} onLogout={() => {}} />)
+  it('renders the chatbot so wake listening is owned by VoiceChatbot', async () => {
+    render(<HomeScreen session={session} onLogout={() => {}} />)
 
-    await waitFor(() => {
-      expect(startChatbotWakeService).toHaveBeenCalledTimes(1)
-    })
-
-    unmount()
-
-    expect(stopChatbotWakeService).toHaveBeenCalledTimes(1)
+    expect(await screen.findByTestId('voice-chatbot')).toBeTruthy()
   })
 })
