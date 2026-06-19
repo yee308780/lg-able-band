@@ -86,6 +86,7 @@ function App() {
   const livingSignalSessionRef = useRef(null)
   const livingSignalCooldownRef = useRef({ key: '', at: 0 })
   const livingSignalConfigKeyRef = useRef('')
+  const microphonePreflightRequestedRef = useRef(false)
   const knownAlertIdsRef = useRef(new Set())
   const announcedAlertIdRef = useRef(null)
   const announcedUwbMessageRef = useRef('')
@@ -176,6 +177,7 @@ function App() {
         sounds: [],
       })
       livingSignalConfigKeyRef.current = ''
+      microphonePreflightRequestedRef.current = false
       setStatusMessage(message)
     },
     [stopLivingSignalMonitoring],
@@ -362,6 +364,42 @@ function App() {
       window.clearInterval(intervalId)
     }
   }, [alertStatuses, isPaired, mode, resetPairingSession])
+
+  useEffect(() => {
+    if (!isPaired) {
+      return undefined
+    }
+
+    if (!isMicrophoneSupported() || microphonePreflightRequestedRef.current) {
+      return undefined
+    }
+
+    microphonePreflightRequestedRef.current = true
+    let isMounted = true
+
+    async function requestMicrophonePermission() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        stream.getTracks().forEach((track) => track.stop())
+      } catch (error) {
+        if (!isMounted) {
+          return
+        }
+
+        setLivingSignalState((current) => ({
+          ...current,
+          error:
+            error?.message || '생활 신호 감지를 위해 마이크 권한을 허용해주세요.',
+        }))
+      }
+    }
+
+    requestMicrophonePermission()
+
+    return () => {
+      isMounted = false
+    }
+  }, [isPaired])
 
   useEffect(() => {
     if (!isPaired) {
