@@ -305,9 +305,14 @@ export function VoiceChatbot({
     setError('')
     setStatus('안내 중...')
     window.clearTimeout(greetingTimeoutRef.current)
-    const greetingDelayMs = options.fromWake ? 650 : 0
+    const greetingDelayMs = 0
     greetingTimeoutRef.current = window.setTimeout(() => {
       if (!conversationActiveRef.current || manualStopRef.current) {
+        return
+      }
+
+      if (options.fromWake) {
+        speakAndCueUserTurn('무엇을 도와드릴까요?')
         return
       }
 

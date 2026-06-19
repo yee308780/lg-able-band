@@ -584,6 +584,12 @@ describe('VoiceChatbot info agent response', () => {
 
   it('recognizes natural wake phrases for opening the chatbot by voice', () => {
     expect(shouldOpenChatbot('챗봇 켜줘')).toBe(true)
+    expect(shouldOpenChatbot('쳇봇 켜줘')).toBe(true)
+    expect(shouldOpenChatbot('채봇 켜줘')).toBe(true)
+    expect(shouldOpenChatbot('챗봇 켜죠')).toBe(true)
+    expect(shouldOpenChatbot('챗봇 커줘')).toBe(true)
+    expect(shouldOpenChatbot('에이블 챗봇')).toBe(true)
+    expect(shouldOpenChatbot('챗봇 지금 켜줘')).toBe(true)
     expect(shouldOpenChatbot('AI 음성 인식 해줘')).toBe(true)
     expect(shouldOpenChatbot('에이아이 음성인식 켜줘')).toBe(true)
     expect(shouldOpenChatbot('지금 음성 챗봇 열어줘')).toBe(true)
