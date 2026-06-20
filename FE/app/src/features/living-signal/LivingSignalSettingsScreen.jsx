@@ -533,7 +533,21 @@ export function LivingSignalSettingsScreen({
               <strong className="card-title" id="living-signal-list-title">등록된 알림음</strong>
             </div>
           </div>
-          <p className="living-signal-empty" role="status">등록된 알림음을 불러오는 중입니다.</p>
+          <div className="living-signal-loading-state" role="status" aria-live="polite">
+            <div className="living-signal-loading-visual" aria-hidden="true">
+              <span className="living-signal-loading-ring" />
+              <span className="living-signal-loading-dot" />
+            </div>
+            <div className="living-signal-loading-copy">
+              <strong>등록된 알림음을 준비하고 있어요.</strong>
+              <p>저장된 생활 신호와 샘플을 차례대로 불러오는 중입니다.</p>
+            </div>
+            <div className="living-signal-loading-skeleton" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
         </section>
       </section>
     )
