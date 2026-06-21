@@ -75,7 +75,8 @@ public class MockDataStore {
 			new Guardian(1, "김보호", "010-0000-0000", true, true, ConnectionStatus.CONNECTED)
 		)));
 		this.devicesByUserId.put(1L, new ArrayList<>(List.of(
-			new Device(10, "세탁기", DeviceType.WASHER, ConnectionStatus.CONNECTED, true, OffsetDateTime.now().minusMinutes(10), "세탁실")
+			new Device(10, "세탁기", DeviceType.WASHER, ConnectionStatus.CONNECTED, true, OffsetDateTime.now().minusMinutes(10), "세탁실"),
+			new Device(13, "도어센서", DeviceType.DOOR_SENSOR, ConnectionStatus.CONNECTED, true, OffsetDateTime.now().minusMinutes(4), "현관")
 		)));
 		this.alertsByUserId.put(1L, new ArrayList<>(List.of(
 			new Alert(101, AlertType.LIFE, Severity.LOW, "세탁 완료", "세탁이 완료되었습니다. 건조기로 옮겨주세요.", "세탁기", OffsetDateTime.now().minusMinutes(20), AlertStatus.UNREAD, "세탁기 완료 알림입니다."),
