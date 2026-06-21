@@ -6093,7 +6093,7 @@ h1 {
 }
 
 .wearable-chat-speaking .wearable-chat-header h2 {
-  font-size: clamp(1.48rem, 4.8vh, 2.16rem);
+  font-size: clamp(1.12rem, 3.4vh, 1.6rem);
   line-height: 1.08;
 }
 
@@ -6144,7 +6144,7 @@ h1 {
 }
 
 .wearable-chat-speaking .wearable-chat-header h2 {
-  font-size: clamp(1.28rem, 4.1vh, 1.84rem);
+  font-size: clamp(1.12rem, 3.4vh, 1.6rem);
   line-height: 1.08;
 }
 .wearable-chat-speaking .wearable-chat-header {
