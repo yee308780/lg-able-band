@@ -608,6 +608,8 @@ export function VoiceChatbot({
     setVoiceStatus('AI 답변을 준비 중이에요.')
     setChatResponse(createWearableAiLoadingResponse(question, requestText))
 
+    let deviceContext = null
+
     try {
       if (categoryId === 'safety') {
         const currentAlerts = await getCurrentAlerts().catch(() => [alert, ...alertQueue].filter(Boolean))
@@ -645,7 +647,10 @@ export function VoiceChatbot({
         }
       }
 
-      const data = await requestVoiceChat({
+      deviceContext = categoryId === 'devices'
+        ? createWearableDeviceContext(await loadWearableAppliances())
+        : null
+      const chatbotResponse = await requestVoiceChat({
         sessionId: 'wearable-demo',
         text: requestText,
         language: 'ko-KR',
@@ -657,18 +662,23 @@ export function VoiceChatbot({
         context: {
           source: 'wearable',
           categoryId,
+          ...(deviceContext ? { devices: deviceContext } : {}),
           ...(lastAiContext ? { lastInfoAgent: lastAiContext.lastInfoAgent } : {}),
           ...(isFollowup && lastAiContext?.selectedDocument
             ? { selectedDocument: lastAiContext.selectedDocument }
             : {}),
         },
       })
-      const normalized = normalizeWearableAiResponse(data, {
+      const data = {
+        ...chatbotResponse,
+        ...(deviceContext ? { wearableDeviceContext: deviceContext } : {}),
+      }
+      const normalized = applyWearableDeviceSummary(normalizeWearableAiResponse(data, {
         categoryId,
         question,
         query: requestText,
         context: lastAiContext || {},
-      })
+      }), deviceContext, question)
       setChatResponse(normalized)
       setLastAiContext(normalized.context)
       setVoiceStatus('답변을 불러왔어요.')
@@ -680,10 +690,14 @@ export function VoiceChatbot({
         query: requestText,
         context: lastAiContext || {},
       })
-      setChatResponse(fallback)
-      setLastAiContext(fallback.context)
+      const fallbackWithDeviceContext = applyWearableDeviceSummary({
+        ...fallback,
+        ...(deviceContext ? { wearableDeviceContext: deviceContext } : {}),
+      }, deviceContext, question)
+      setChatResponse(fallbackWithDeviceContext)
+      setLastAiContext(fallbackWithDeviceContext.context)
       setVoiceStatus('기본 안내를 보여드릴게요.')
-      speakText(fallback.voiceMessage || fallback.summary)
+      speakText(fallbackWithDeviceContext.voiceMessage || fallbackWithDeviceContext.summary)
     } finally {
       setIsRequesting(false)
     }
@@ -2249,7 +2263,13 @@ function ApplianceStatusAnswerCard({
   response,
   selectedQuestion,
 }) {
-  const statusCard = createApplianceStatusCard(card, response, selectedQuestion)
+  const resolvedStatusCard = createApplianceStatusCard(card, response, selectedQuestion)
+  const statusCard = isRequesting
+    ? { ...resolvedStatusCard, statusLabel: '확인 중', tone: 'checking' }
+    : resolvedStatusCard
+  const statusBadgeStyle = statusCard.tone === 'unavailable'
+    ? { background: '#f3e8ff', color: '#7e22ce' }
+    : undefined
   const followupQuestions = wearableAiQuestions.devices
     .filter((question) => !question.direct && question.id !== selectedQuestion?.id)
     .slice(0, 2)
@@ -2271,7 +2291,7 @@ function ApplianceStatusAnswerCard({
         <button className="wearable-appliance-back" type="button" aria-label="이전으로" onClick={onBack}>
           ‹
         </button>
-        <span className={`wearable-appliance-status-badge status-${statusCard.tone}`}>
+        <span className={`wearable-appliance-status-badge status-${statusCard.tone}`} style={statusBadgeStyle}>
           {statusCard.statusLabel}
         </span>
       </div>
@@ -2779,6 +2799,55 @@ function requestAppTTS(text) {
   console.log('앱에서 TTS 출력 요청:', text)
 }
 
+function createWearableDeviceContext(appliances = []) {
+  const findByType = (...types) => appliances.find((appliance) => types.includes(appliance?.type))
+  const deviceValue = (appliance, key) => appliance?.runtime?.[key] ?? appliance?.state?.[key] ?? appliance?.[key]
+  const normalizedStatus = (appliance) => {
+    if (appliance?.connectionStatus === 'CONNECTED') return 'NORMAL'
+    if (appliance?.connectionStatus === 'WARNING') return 'WARNING'
+    if (appliance?.connectionStatus === 'ERROR') return 'ERROR'
+    return appliance?.status || null
+  }
+  const isWarning = (appliance) => ['WARNING', 'ERROR'].includes(appliance?.connectionStatus)
+  const washer = findByType('WASHER')
+  const refrigerator = findByType('REFRIGERATOR', 'FRIDGE')
+  const airSensor = findByType('AIR_SENSOR')
+  const tv = findByType('TV')
+  const range = findByType('RANGE')
+  const doorSensor = findByType('DOOR_SENSOR')
+
+  return {
+    washer: washer ? {
+      status: deviceValue(washer, 'statusCode') || normalizedStatus(washer),
+      remainingMinutes: deviceValue(washer, 'remainingMinutes'),
+      error: isWarning(washer),
+    } : null,
+    refrigerator: refrigerator ? {
+      doorOpen: deviceValue(refrigerator, 'doorOpen'),
+      temperatureStatus: deviceValue(refrigerator, 'temperatureStatus') || normalizedStatus(refrigerator),
+      error: isWarning(refrigerator),
+    } : null,
+    airSensor: airSensor ? {
+      airQuality: deviceValue(airSensor, 'airQuality') || normalizedStatus(airSensor),
+      pmLevel: deviceValue(airSensor, 'pmLevel'),
+      ventilationNeeded: deviceValue(airSensor, 'ventilationNeeded'),
+      co2Status: deviceValue(airSensor, 'co2Status'),
+    } : null,
+    tv: tv ? {
+      hasPopup: deviceValue(tv, 'hasPopup') || false,
+      popupMessage: deviceValue(tv, 'popupMessage'),
+    } : null,
+    range: range ? {
+      powerOn: deviceValue(range, 'powerOn'),
+      longOn: deviceValue(range, 'longOn') || isWarning(range),
+    } : null,
+    doorSensor: doorSensor ? {
+      doorOpen: deviceValue(doorSensor, 'doorOpen'),
+      securityEvent: deviceValue(doorSensor, 'securityEvent') || isWarning(doorSensor),
+    } : null,
+  }
+}
+
 function createApplianceStatusCard(card, response, selectedQuestion) {
   const sourceCard = response?.appCard || response?.infoCard || response?.card || {}
   const title = applianceDisplayTitle(selectedQuestion, card.title)
@@ -2786,17 +2855,20 @@ function createApplianceStatusCard(card, response, selectedQuestion) {
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
-  const isFallback = isApplianceFallbackResponse(card, response)
+  const deviceSummary = applianceDeviceContextSummary(response?.wearableDeviceContext, selectedQuestion)
+  const isFallback = isApplianceFallbackResponse(card, response) && !deviceSummary
   const fallbackCopy = isFallback ? applianceFallbackCopy(selectedQuestion) : null
-  const status = applianceStatusFrom(card.priority, card.summary, sourceCard, isFallback)
+  const status = deviceSummary
+    ? applianceStatusFromDeviceContext(response?.wearableDeviceContext, selectedQuestion)
+    : applianceStatusFrom(card.priority, card.summary, sourceCard, isFallback)
 
   return {
     title,
     icon: selectedQuestion?.icon || applianceIconFor(title, selectedQuestion?.query),
     statusLabel: status.label,
     tone: status.tone,
-    mainText: fallbackCopy?.mainText || summaryLines[0] || title,
-    subText: fallbackCopy?.subText || summaryLines[1] || '',
+    mainText: deviceSummary?.mainText || fallbackCopy?.mainText || summaryLines[0] || title,
+    subText: deviceSummary ? deviceSummary.subText : (fallbackCopy?.subText || summaryLines[1] || ''),
     details: applianceDetailRows(sourceCard, response),
   }
 }
@@ -2847,7 +2919,7 @@ function applianceFallbackCopy(question) {
 
 function applianceStatusFrom(priority, summary, sourceCard, isFallback) {
   if (isFallback) {
-    return { label: '주의', tone: 'warning' }
+    return { label: '정보 없음', tone: 'unavailable' }
   }
 
   const rawStatus = [
@@ -2879,6 +2951,113 @@ function applianceIconFor(title, query) {
   if (/레인지|인덕션|화구|불|range|stove/i.test(text)) return '🔥'
   if (/연결|기기|device|connect/i.test(text)) return '🔗'
   return '🫧'
+}
+
+function applianceStatusFromDeviceContext(devices, question) {
+  if (question?.id === 'stoveStatus') {
+    return devices?.range?.longOn ? { label: '위험', tone: 'danger' } : { label: '정상', tone: 'normal' }
+  }
+
+  if (question?.id === 'fridgeDoor') {
+    return devices?.refrigerator?.doorOpen ? { label: '주의', tone: 'warning' } : { label: '정상', tone: 'normal' }
+  }
+
+  if (question?.id === 'airQuality') {
+    return devices?.airSensor?.ventilationNeeded ? { label: '주의', tone: 'warning' } : { label: '정상', tone: 'normal' }
+  }
+
+  if (question?.id === 'doorSensor') {
+    if (devices?.doorSensor?.securityEvent) return { label: '위험', tone: 'danger' }
+    return devices?.doorSensor?.doorOpen ? { label: '주의', tone: 'warning' } : { label: '정상', tone: 'normal' }
+  }
+
+  if (question?.id === 'washer') {
+    return devices?.washer?.error ? { label: '주의', tone: 'warning' } : { label: '정상', tone: 'normal' }
+  }
+
+  return { label: '정상', tone: 'normal' }
+}
+
+function applianceDeviceContextSummary(devices, question) {
+  if (!devices || !question?.id) {
+    return null
+  }
+
+  const summaries = {
+    washer: devices.washer && {
+      mainText: `현재 상태: ${String(devices.washer.status).toUpperCase() === 'RUNNING' ? '작동 중' : '정상'}`,
+      subText: devices.washer.remainingMinutes != null
+        ? `남은 시간: 약 ${devices.washer.remainingMinutes}분`
+        : '남은 시간: 확인할 수 없어요.',
+    },
+    fridgeDoor: devices.refrigerator && {
+      mainText: typeof devices.refrigerator.doorOpen === 'boolean'
+        ? `냉장고 문은 ${formatBooleanStatus(devices.refrigerator.doorOpen, '열려 있어요', '닫혀 있어요')}.`
+        : `냉장고 상태는 ${formatApplianceRuntimeStatus(devices.refrigerator.temperatureStatus)}입니다.`,
+      subText: devices.refrigerator.temperatureStatus ? `온도 상태는 ${formatApplianceRuntimeStatus(devices.refrigerator.temperatureStatus)}입니다.` : '',
+    },
+    airQuality: devices.airSensor && {
+      mainText: `현재 공기질은 ${formatAirQualityStatus(devices.airSensor.airQuality)}입니다.`,
+      subText: devices.airSensor.ventilationNeeded === true ? '환기가 필요해요.' : '',
+    },
+    stoveStatus: devices.range && {
+      mainText: typeof devices.range.powerOn === 'boolean'
+        ? `전기레인지는 ${formatBooleanStatus(devices.range.powerOn, '켜져 있어요', '꺼져 있어요')}.`
+        : `전기레인지 상태는 ${formatApplianceRuntimeStatus(devices.range.longOn ? 'WARNING' : 'NORMAL')}입니다.`,
+      subText: devices.range.longOn === true ? '장시간 사용 중이라 확인이 필요해요.' : '',
+    },
+    doorSensor: devices.doorSensor && {
+      mainText: typeof devices.doorSensor.doorOpen === 'boolean'
+        ? `문은 ${formatBooleanStatus(devices.doorSensor.doorOpen, '열려 있어요', '닫혀 있어요')}.`
+        : `도어센서 상태는 ${formatApplianceRuntimeStatus(devices.doorSensor.securityEvent ? 'WARNING' : 'NORMAL')}입니다.`,
+      subText: devices.doorSensor.securityEvent === true ? '보안 알림이 있어요.' : '',
+    },
+  }
+
+  return summaries[question.id] || null
+}
+
+function applyWearableDeviceSummary(response, devices, question) {
+  const deviceSummary = applianceDeviceContextSummary(devices, question)
+  if (!deviceSummary) {
+    return response
+  }
+
+  const text = [deviceSummary.mainText, deviceSummary.subText].filter(Boolean).join(' ')
+  return {
+    ...response,
+    summary: text,
+    voiceMessage: text,
+  }
+}
+
+function formatApplianceRuntimeStatus(status) {
+  const labels = {
+    RUNNING: '작동 중',
+    COMPLETE: '완료',
+    NORMAL: '정상',
+    CONNECTED: '정상',
+    ONLINE: '정상',
+    ACTIVE: '정상',
+    OK: '정상',
+    WARNING: '주의',
+    CAUTION: '주의',
+    ERROR: '오류',
+    DISCONNECTED: '연결 끊김',
+    OFFLINE: '연결 끊김',
+  }
+  return status ? labels[String(status).toUpperCase()] || String(status) : '정보 없음'
+}
+
+function formatAirQualityStatus(status) {
+  const labels = { GOOD: '좋음', NORMAL: '정상', MODERATE: '보통', POOR: '나쁨', BAD: '나쁨' }
+  return status ? labels[String(status).toUpperCase()] || formatApplianceRuntimeStatus(status) : '정보 없음'
+}
+
+function formatBooleanStatus(value, trueLabel, falseLabel) {
+  if (value === true) return trueLabel
+  if (value === false) return falseLabel
+  return '정보 없음'
 }
 
 function applianceDetailRows(sourceCard, response) {
@@ -3287,7 +3466,7 @@ function formatApplianceStatus(appliance) {
   if (['WARNING', 'CAUTION', 'CHECK'].includes(status)) {
     return '확인이 필요해요'
   }
-  return appliance?.connectionStatus || appliance?.status || '상태 정보를 확인 중이에요'
+  return formatApplianceRuntimeStatus(status)
 }
 
 function getUnreadAlerts(alerts) {

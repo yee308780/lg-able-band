@@ -5,6 +5,7 @@ import { VoiceChatbot } from './VoiceChatbot'
 describe('wearable VoiceChatbot button selection', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+    localStorage.removeItem('lg-able-band.wearableAccessToken')
   })
 
   it('opens category and recommendation screens from the button selection path', async () => {
@@ -251,13 +252,102 @@ describe('wearable VoiceChatbot button selection', () => {
     })
 
     expect(screen.getByRole('heading', { name: '세탁기 상태 알려줘' })).toBeTruthy()
-    expect(container.querySelector('.wearable-appliance-status-badge')?.textContent).toBe('주의')
+    expect(container.querySelector('.wearable-appliance-status-badge')?.textContent).toBe('확인 중')
     expect(screen.queryByLabelText('해야 할 일')).toBeNull()
     expect(screen.getByLabelText('빠른 액션')).toBeTruthy()
     expect(screen.getByRole('button', { name: '다시 확인' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '앱에서 자세히' })).toBeTruthy()
     expect(screen.getByLabelText('후속 질문')).toBeTruthy()
     expect(screen.getByRole('button', { name: '다른 가전 보기' })).toBeTruthy()
+  })
+
+  it('sends the connected appliance state with a device question', async () => {
+    localStorage.setItem('lg-able-band.wearableAccessToken', 'wearable-token')
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, options = {}) => {
+      if (url === '/api/devices') {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'application/json' }),
+          json: async () => ({
+            items: [{
+              deviceId: 10,
+              name: '세탁기',
+              type: 'WASHER',
+              connectionStatus: 'CONNECTED',
+              room: '세탁실',
+              runtime: { statusCode: 'RUNNING', remainingMinutes: 12 },
+            }],
+          }),
+        }
+      }
+
+      if (String(url).endsWith('/api/ai/voice-chat')) {
+        return {
+          ok: true,
+          json: async () => ({ answerText: '세탁기 상태는 RUNNING입니다.' }),
+        }
+      }
+
+      throw new Error(`unexpected request: ${url} ${options.method || 'GET'}`)
+    })
+    const user = userEvent.setup()
+    render(
+      <VoiceChatbot
+        embedded
+        isPaired
+        mode="idle"
+        notificationSettings={{ voiceGuide: false, vibrationGuide: false }}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'AI에게 묻기' }))
+    await user.click(screen.getByRole('button', { name: '가전 상태' }))
+    await user.click(screen.getByRole('button', { name: '가전 상태 질문: 세탁기 상태 알려줘' }))
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/api/ai/voice-chat'))).toBe(true)
+    })
+
+    const chatbotCall = fetchMock.mock.calls.findLast(([url]) => String(url).endsWith('/api/ai/voice-chat'))
+    expect(JSON.parse(chatbotCall[1].body).context.devices.washer).toEqual({
+      status: 'RUNNING',
+      remainingMinutes: 12,
+      error: false,
+    })
+    expect(screen.getByText('현재 상태: 작동 중')).toBeTruthy()
+    expect(screen.getByText('남은 시간: 약 12분')).toBeTruthy()
+    expect(screen.queryByText(/예를 들면 세탁기 상태/)).toBeNull()
+    localStorage.removeItem('lg-able-band.wearableAccessToken')
+  })
+
+  it('uses the electric-range state instead of a stale AI danger priority for its badge', async () => {
+    localStorage.setItem('lg-able-band.wearableAccessToken', 'wearable-token')
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      if (url === '/api/devices') {
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'Content-Type': 'application/json' }),
+          json: async () => ({ items: [{ deviceId: 12, name: '전기레인지', type: 'RANGE', connectionStatus: 'CONNECTED', runtime: { powerOn: false, longOn: false } }] }),
+        }
+      }
+
+      if (String(url).endsWith('/api/ai/voice-chat')) {
+        return { ok: true, json: async () => ({ answerText: '전기레인지 상태는 정상입니다.', priority: 'DANGER' }) }
+      }
+
+      throw new Error(`unexpected request: ${url}`)
+    })
+    const user = userEvent.setup()
+    const { container } = render(<VoiceChatbot embedded isPaired mode="idle" notificationSettings={{ voiceGuide: false, vibrationGuide: false }} />)
+
+    await user.click(screen.getByRole('button', { name: 'AI에게 묻기' }))
+    await user.click(screen.getByRole('button', { name: '가전 상태' }))
+    await user.click(screen.getByRole('button', { name: '가전 상태 질문: 전기레인지 상태 확인해줘' }))
+
+    expect(await screen.findByText('전기레인지는 꺼져 있어요.')).toBeTruthy()
+    expect(container.querySelector('.wearable-appliance-status-badge')?.textContent).toBe('정상')
   })
 
   it('uses an appliance-specific fallback when a recommended device question receives a clarification prompt', async () => {
@@ -327,7 +417,7 @@ describe('wearable VoiceChatbot button selection', () => {
       expect(screen.getByRole('heading', { name: '연결된 기기 상태 알려줘' })).toBeTruthy()
     })
 
-    expect(container.querySelector('.wearable-appliance-status-badge')?.textContent).toBe('주의')
+    expect(container.querySelector('.wearable-appliance-status-badge')?.textContent).toBe('확인 중')
     expect(screen.getByText('연결된 기기 상태를 확인하지 못했어요.')).toBeTruthy()
     expect(screen.getByText('다시 확인하거나 다른 가전을 선택해 주세요.')).toBeTruthy()
     expect(screen.getAllByText('연결된 기기 상태 알려줘')).toHaveLength(1)
