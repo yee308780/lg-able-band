@@ -7,7 +7,6 @@ import {
   getLivingSignalState,
 } from '../features/living-signal/livingSignalService'
 import { getAccessibilitySettings, updateAccessibilitySettings } from '../services/accessibilityService'
-import { startChatbotWakeService, stopChatbotWakeService } from '../services/chatbotWakeService'
 import { applyContextAiSafetyStatus, getAppPreview, getHomeSummary } from '../services/homeService'
 import { getDevices } from '../services/deviceService'
 import { createEmergencyRequest } from '../services/emergencyService'
@@ -239,14 +238,6 @@ export function HomeScreen({ session, onLogout }) {
       window.clearInterval(intervalId)
     }
   }, [applyLocalAlertVisibility, homeRefreshState.refreshing, homeState.loading, loadHomeView, menuScreen])
-
-  useEffect(() => {
-    startChatbotWakeService()
-
-    return () => {
-      stopChatbotWakeService()
-    }
-  }, [])
 
   useEffect(() => {
     function handleChatbotActivity(event) {

@@ -5,7 +5,6 @@ import { HomeScreen } from './components/HomeScreen'
 import { LoginScreen } from './components/LoginScreen'
 import { SignupScreen } from './components/SignupScreen'
 import { getStoredSession, login, logout, signup } from './services/authService'
-import { stopChatbotWakeService } from './services/chatbotWakeService'
 import { unlockTurnCueAudio } from './services/turnCueAudioService'
 import { AUTHENTICATION_EXPIRED_EVENT } from './services/apiClient'
 import {
@@ -64,7 +63,6 @@ function App() {
 
   useLayoutEffect(() => {
     function handleAuthenticationExpired() {
-      stopChatbotWakeService()
       logout()
       setSession(null)
       setScreen('login')
@@ -189,7 +187,6 @@ function App() {
   }
 
   function handleLogout() {
-    stopChatbotWakeService()
     logout()
     setSession(null)
     setScreen('login')

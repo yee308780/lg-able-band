@@ -1,8 +1,11 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { vi } from 'vitest'
-import { VoiceChatbot, shouldOpenChatbot } from './VoiceChatbot'
-import { shouldCloseChatbot } from '../utils/chatbotWake'
+import { afterEach, vi } from 'vitest'
+import { VoiceChatbot } from './VoiceChatbot'
+import { shouldCloseChatbot, shouldOpenChatbot } from '../utils/chatbotWake'
+
+const originalSpeechRecognition = window.SpeechRecognition
+const originalWebkitSpeechRecognition = window.webkitSpeechRecognition
 
 describe('VoiceChatbot info agent response', () => {
   beforeEach(() => {
@@ -10,6 +13,11 @@ describe('VoiceChatbot info agent response', () => {
     globalThis.fetch = vi.fn()
     installSpeechSynthesisMock()
     window.HTMLElement.prototype.scrollIntoView = vi.fn()
+  })
+
+  afterEach(() => {
+    window.SpeechRecognition = originalSpeechRecognition
+    window.webkitSpeechRecognition = originalWebkitSpeechRecognition
   })
 
   it('renders the accessible info card and reads voiceText again', async () => {
@@ -519,10 +527,10 @@ describe('VoiceChatbot info agent response', () => {
     const user = userEvent.setup()
     mockVoiceChatResponses(
       {
-        intent: 'ALERT_LIST',
-        action: 'READ_ALERTS',
-        answerText: '최근 알림은 한 건입니다.',
-        voiceText: '최근 알림은 한 건입니다.',
+        intent: 'GENERAL_CHAT',
+        action: 'ANSWER',
+        answerText: '첫 번째 답변입니다.',
+        voiceText: '첫 번째 답변입니다.',
       },
       {
         intent: 'DEVICE_STATUS_CHECK',
@@ -534,17 +542,17 @@ describe('VoiceChatbot info agent response', () => {
 
     render(<VoiceChatbot preview={{}} session={{}} summary={{}} />)
     await openTalkMode(user)
-    await user.type(screen.getByLabelText('인식된 문장'), '최근 알림 읽어줘')
+    await user.type(screen.getByLabelText('인식된 문장'), '첫 번째 질문')
     await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
-    await screen.findByText('최근 알림은 한 건입니다.')
+    await screen.findByText('첫 번째 답변입니다.')
     await screen.findByText('답변 중')
 
     await user.type(screen.getByLabelText('인식된 문장'), '세탁기 몇 분 남았어?')
     await user.click(screen.getByRole('button', { name: '텍스트로 보내기' }))
 
     expect(await screen.findByText('세탁 완료까지 12분 남았습니다.')).toBeTruthy()
-    expect(screen.getAllByText('최근 알림 읽어줘').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText('최근 알림은 한 건입니다.')).toBeTruthy()
+    expect(screen.getAllByText('첫 번째 질문').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('첫 번째 답변입니다.')).toBeTruthy()
     expect(screen.getAllByText('세탁기 몇 분 남았어?').length).toBeGreaterThanOrEqual(1)
     expect(window.HTMLElement.prototype.scrollIntoView).toHaveBeenCalled()
   }, 10000)
