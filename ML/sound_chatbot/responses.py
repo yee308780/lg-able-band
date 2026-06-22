@@ -27,6 +27,34 @@ def bool_answer(value: Optional[bool], true_text: str, false_text: str, unknown_
     return unknown_text
 
 
+def label_status(value: Optional[str]) -> str:
+    if not value:
+        return ""
+
+    normalized = str(value).strip().upper()
+    labels = {
+        "RUNNING": "동작 중",
+        "OPERATING": "동작 중",
+        "IN_PROGRESS": "동작 중",
+        "COMPLETE": "완료",
+        "COMPLETED": "완료",
+        "DONE": "완료",
+        "NORMAL": "정상",
+        "GOOD": "좋음",
+        "WARNING": "주의 필요",
+        "ERROR": "오류",
+        "CONNECTED": "연결됨",
+        "DISCONNECTED": "연결 끊김",
+        "PENDING": "연결 대기 중",
+        "LOW": "낮음",
+        "MEDIUM": "보통",
+        "HIGH": "높음",
+        "BAD": "나쁨",
+        "POOR": "나쁨",
+    }
+    return labels.get(normalized, str(value))
+
+
 def format_distance_meters(value: Optional[float]) -> Optional[str]:
     if value is None:
         return None
@@ -138,7 +166,7 @@ def build_response(request: ChatRequest, match: IntentMatch) -> ChatResponse:
         if washer and washer.error:
             answer = "세탁기에 확인이 필요한 오류가 있어요."
         elif washer and washer.status:
-            answer = f"세탁기 상태는 {washer.status}입니다."
+            answer = f"세탁기 상태는 {label_status(washer.status)}입니다."
         else:
             answer = "세탁기 상태 정보가 없어요."
         action = "READ_DEVICE_STATUS"
@@ -154,7 +182,7 @@ def build_response(request: ChatRequest, match: IntentMatch) -> ChatResponse:
         elif refrigerator and refrigerator.error:
             answer = "냉장고에 확인이 필요한 오류가 있어요."
         elif refrigerator and refrigerator.temperatureStatus:
-            answer = f"냉장고 온도 상태는 {refrigerator.temperatureStatus}입니다."
+            answer = f"냉장고 온도 상태는 {label_status(refrigerator.temperatureStatus)}입니다."
         else:
             answer = "냉장고 상태 정보가 없어요."
         action = "READ_DEVICE_STATUS"
@@ -163,7 +191,7 @@ def build_response(request: ChatRequest, match: IntentMatch) -> ChatResponse:
         if air and air.ventilationNeeded:
             answer = "실내 환기가 필요해요."
         elif air and air.airQuality:
-            answer = f"현재 공기질은 {air.airQuality}입니다."
+            answer = f"현재 공기질은 {label_status(air.airQuality)} 상태입니다."
         else:
             answer = "공기질 정보가 없어요."
         action = "READ_DEVICE_STATUS"
@@ -210,7 +238,7 @@ def build_response(request: ChatRequest, match: IntentMatch) -> ChatResponse:
         elif normalized_status in {"WARNING", "ERROR"}:
             answer = f"{name} 연결 상태에 확인이 필요해요. 앱의 기기 화면에서 상태를 확인해 주세요."
         elif status:
-            answer = f"{name} 연결 상태는 {status}입니다."
+            answer = f"{name} 연결 상태는 {label_status(status)}입니다."
         else:
             answer = "밴드 연결 상태 정보가 없어요. 앱의 기기 화면에서 확인해 주세요."
         action = "READ_DEVICE_STATUS"

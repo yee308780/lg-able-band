@@ -1,6 +1,7 @@
 """Run the three pre-trained info-agent classifiers with rule corrections."""
 
 import sys
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,8 @@ if str(MODULE_DIR) not in sys.path:
     sys.path.insert(0, str(MODULE_DIR))
 
 from transformer_joblib_model import JoblibTransformerClassifier  # noqa: E402,F401
+from .classifiers.category_classifier import predict_category  # noqa: E402
+from .classifiers.priority_classifier import predict_priority  # noqa: E402
 
 
 MODEL_DIR = MODULE_DIR / "models"
@@ -25,13 +28,62 @@ MODEL_PATHS = {
 def _load_models() -> dict[str, Any]:
     missing = [str(path) for path in MODEL_PATHS.values() if not path.is_file()]
     if missing:
-        raise FileNotFoundError(
-            "Required classifier model file(s) not found: " + ", ".join(missing)
+        warnings.warn(
+            "Classifier model file(s) not found; rule fallback will be used: "
+            + ", ".join(missing),
+            RuntimeWarning,
         )
-    return {name: joblib.load(path) for name, path in MODEL_PATHS.items()}
+    models = {}
+    for name, path in MODEL_PATHS.items():
+        if not path.is_file():
+            models[name] = None
+            continue
+        try:
+            models[name] = joblib.load(path)
+        except Exception as error:
+            warnings.warn(
+                f"Could not load classifier model {path.name}; rule fallback will be used. "
+                f"{type(error).__name__}: {error}",
+                RuntimeWarning,
+            )
+            models[name] = None
+    return models
 
 
 MODELS = _load_models()
+
+
+def _fallback_accessibility_target(text: str) -> str:
+    normalized = text.lower()
+    if any(keyword in normalized for keyword in ("청각", "수어", "자막", "문자통역", "보청")):
+        return "HEARING_IMPAIRED"
+    if any(keyword in normalized for keyword in ("시각", "점자", "화면해설", "음성안내", "스크린리더")):
+        return "VISUAL_IMPAIRED"
+    if any(keyword in normalized for keyword in ("지체", "휠체어", "이동지원", "활동지원", "보행")):
+        return "PHYSICAL_IMPAIRED"
+    if any(keyword in normalized for keyword in ("시청각", "농맹")):
+        return "VISUAL_HEARING_IMPAIRED"
+    return "ALL"
+
+
+def _predict_model_or_fallback(name: str, query: str) -> str:
+    model = MODELS.get(name)
+    if model is not None:
+        try:
+            return str(model.predict([query])[0])
+        except Exception as error:
+            warnings.warn(
+                f"Classifier model {name} failed during prediction; rule fallback will be used. "
+                f"{type(error).__name__}: {error}",
+                RuntimeWarning,
+            )
+    if name == "category":
+        return predict_category(query)[0]
+    if name == "priority":
+        return predict_priority(query)[0]
+    if name == "accessibilityTarget":
+        return _fallback_accessibility_target(query)
+    return "UNKNOWN"
 
 VISUAL_HEARING_KEYWORDS = (
     "시청각장애",
@@ -245,8 +297,8 @@ def predict_info_agent(text: str, use_rule: bool = True) -> dict:
 
     query = text.strip()
     raw_prediction = {
-        name: str(model.predict([query])[0])
-        for name, model in MODELS.items()
+        name: _predict_model_or_fallback(name, query)
+        for name in MODEL_PATHS
     }
     final_prediction, _ = (
         _apply_rules(query.lower(), raw_prediction)

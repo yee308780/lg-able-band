@@ -1,0 +1,8 @@
+C:\Users\lab4dx\1_수업 자료\DX_Project\lg-able-band\ML\info_agent\predict_classifier.py:44: RuntimeWarning: Could not load classifier model category_classifier.joblib; rule fallback will be used. EOFError: 
+  warnings.warn(
+C:\Users\lab4dx\1_수업 자료\DX_Project\lg-able-band\ML\info_agent\predict_classifier.py:44: RuntimeWarning: Could not load classifier model accessibility_target_classifier.joblib; rule fallback will be used. EOFError: 
+  warnings.warn(
+INFO:     Started server process [42720]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8004 (Press CTRL+C to quit)

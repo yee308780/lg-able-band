@@ -1,0 +1,96 @@
+
+> app-frontend@0.0.0 dev
+> vite --host 127.0.0.1 --port 5173 --strictPort
+
+[2mPM 1:42:53[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m Re-optimizing dependencies because vite config has changed
+[33mPort 5173 is in use on a wildcard address, but 127.0.0.1:5173 is available. There may be another server running on a wildcard IP on port 5173.[39m
+
+  [32m[1mVITE[22m v8.0.16[39m  [2mready in [0m[1m901[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5173[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+[2mPM 1:46:47[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/devices[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2mPM 1:46:47[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/home[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2mPM 1:46:47[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerts?limit=20[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2mPM 1:46:49[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/living-signals[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)
+[2mPM 1:46:49[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/home[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)
+[2mPM 1:46:49[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerts?limit=20[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)
+[2mPM 1:46:52[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/home[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)
+[2mPM 1:46:52[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerts?limit=20[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)
+[2mPM 1:46:54[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/living-signals[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)
+[2mPM 1:46:55[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/home[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)
+[2mPM 1:46:55[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerts?limit=20[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)
+[2mPM 1:46:58[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerts?limit=20[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)
+[2mPM 1:46:58[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/home[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)
+[2mPM 1:46:59[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/living-signals[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)
+[2mPM 1:47:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/home[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)
+[2mPM 1:47:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerts?limit=20[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)
+[2mPM 1:47:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/living-signals[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)
+[2mPM 1:47:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerts?limit=20[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)
+[2mPM 1:47:04[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/home[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)
+[2mPM 1:47:07[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/app/home[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)
+[2mPM 1:47:07[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerts?limit=20[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)
+[2mPM 1:47:09[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/living-signals[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1142:49)
+    at afterConnectMultiple (node:net:1723:7)

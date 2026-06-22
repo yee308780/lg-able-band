@@ -702,16 +702,17 @@ export function VoiceChatbot({
     setTranscript(spokenText)
     setVoiceStatus(`인식: ${spokenText}`)
     const intent = classifyVoiceIntent(spokenText)
+    const intentDisplayTitle = getVoiceIntentDisplayTitle(intent)
 
     console.log('Wearable voice chatbot intent:', { text: spokenText, intent })
     setConversationState(CONVERSATION_STATE.PROCESSING)
     setIsRequesting(true)
     setCurrentChatScreen('voiceAnswer')
-    setVoiceStatus(`Intent: ${intent}`)
+    setVoiceStatus(`${intentDisplayTitle} 처리 중`)
     try {
       const actionResult = await handleVoiceIntent(intent, spokenText)
       setChatResponse({
-        title: intent,
+        title: intentDisplayTitle,
         text: actionResult.text,
         notificationFeedback: Boolean(actionResult.notificationFeedback),
         quickReplies: [],
@@ -2207,6 +2208,11 @@ function cleanupRecognizedSpeech(text) {
     return ''
   }
 
+  const canonicalBeforeDedup = extractCanonicalVoiceCommand(trimmedText)
+  if (canonicalBeforeDedup) {
+    return canonicalBeforeDedup
+  }
+
   const compactText = trimmedText.replace(/\s/g, '')
   for (let size = 2; size <= Math.floor(compactText.length / 2); size += 1) {
     if (compactText.length % size === 0) {
@@ -2226,7 +2232,56 @@ function cleanupRecognizedSpeech(text) {
     }
   }
 
-  return dedupedWords.join(' ')
+  const dedupedText = dedupedWords.join(' ')
+  return extractCanonicalVoiceCommand(dedupedText) || dedupedText
+}
+
+function extractCanonicalVoiceCommand(text) {
+  const normalizedText = normalizeWakeText(text)
+
+  if (includesAny(normalizedText, ['세탁기', '세탁', '빨래']) && hasStatusRequestWord(normalizedText)) {
+    return '세탁기 상태 확인해줘'
+  }
+
+  if (includesAny(normalizedText, ['냉장고', '냉장', '냉동고']) && hasStatusRequestWord(normalizedText)) {
+    return '냉장고 상태 확인해줘'
+  }
+
+  if (includesAny(normalizedText, ['가전', '기기']) && hasStatusRequestWord(normalizedText)) {
+    return '가전 상태 알려줘'
+  }
+
+  if (includesAny(normalizedText, ['세탁기', '세탁', '빨래']) && hasLocationRequestWord(normalizedText)) {
+    return '세탁기 찾아줘'
+  }
+
+  if (includesAny(normalizedText, ['냉장고', '냉장', '냉동고']) && hasLocationRequestWord(normalizedText)) {
+    return '냉장고 찾아줘'
+  }
+
+  if (
+    includesAny(normalizedText, ['현재알림', '현재알람', '알림확인', '알람확인', '알림읽어', '알람읽어', '알림알려', '알람알려'])
+  ) {
+    return '현재 알림 알려줘'
+  }
+
+  if (includesAny(normalizedText, ['보호자']) && includesAny(normalizedText, ['연결', '연락', '전화'])) {
+    return '보호자 연결해줘'
+  }
+
+  if (includesAny(normalizedText, ['긴급', '도움요청', 'sos', '에스오에스']) && includesAny(normalizedText, ['보내', '요청', '도와'])) {
+    return '긴급 요청 보내줘'
+  }
+
+  return ''
+}
+
+function hasStatusRequestWord(text) {
+  return includesAny(text, ['상태확인', '상태알려', '상태읽어', '상태봐', '작동확인', '연결확인', '켜져', '꺼져'])
+}
+
+function hasLocationRequestWord(text) {
+  return includesAny(text, ['찾아', '찾아줘', '위치', '어디', '안내'])
 }
 
 function getRecognitionAlternatives(result) {
@@ -2396,6 +2451,33 @@ function classifyVoiceIntent(text) {
   }
 
   return VOICE_INTENT.UNKNOWN
+}
+
+function getVoiceIntentDisplayTitle(intent) {
+  const titles = {
+    [VOICE_INTENT.OPEN_CHATBOT]: 'AI 챗봇',
+    [VOICE_INTENT.READ_ALERTS]: '현재 알림 확인',
+    [VOICE_INTENT.READ_APPLIANCE_STATUS]: '가전 상태 확인',
+    [VOICE_INTENT.FIND_WASHER]: '세탁기 위치 안내',
+    [VOICE_INTENT.FIND_FRIDGE]: '냉장고 위치 안내',
+    [VOICE_INTENT.GUARDIAN_CONNECT]: '보호자 연결',
+    [VOICE_INTENT.EMERGENCY_REQUEST]: '긴급 요청',
+    [VOICE_INTENT.SUBSTITUTE_SPEECH]: '대신 말하기',
+    [VOICE_INTENT.WELFARE_INFO]: '복지 정보',
+    [VOICE_INTENT.WELFARE_ASSISTIVE_DEVICE]: '보조기기 지원',
+    [VOICE_INTENT.SHARE_TO_GUARDIAN]: '보호자에게 전달',
+    [VOICE_INTENT.REPEAT]: '다시 듣기',
+    [VOICE_INTENT.CONFIRM_DONE]: '확인 완료',
+    [VOICE_INTENT.YES]: '확인',
+    [VOICE_INTENT.NO]: '취소',
+    [VOICE_INTENT.STOP_UWB]: '위치 안내 종료',
+    [VOICE_INTENT.CANCEL]: '안내 중단',
+    [VOICE_INTENT.GO_START]: '처음으로 돌아가기',
+    [VOICE_INTENT.GO_IDLE]: '대기 모드',
+    [VOICE_INTENT.UNKNOWN]: '다시 말씀해주세요',
+  }
+
+  return titles[intent] || titles[VOICE_INTENT.UNKNOWN]
 }
 
 function createIntentVoiceResponse(intent) {
