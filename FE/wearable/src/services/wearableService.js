@@ -773,7 +773,7 @@ async function withFallback({ apiEnabled, fallbackEnabled, fallback, request }) 
   try {
     return await request()
   } catch (error) {
-    if (!fallbackEnabled || shouldSurfaceApiError(error) || !allowsApiFailureFallback()) {
+    if (!fallbackEnabled || shouldSurfaceApiError(error) || !allowsApiFailureFallback(error)) {
       throw error
     }
 
@@ -781,8 +781,12 @@ async function withFallback({ apiEnabled, fallbackEnabled, fallback, request }) 
   }
 }
 
-function allowsApiFailureFallback() {
-  return globalThis.__ABLE_BAND_ALLOW_API_FAILURE_FALLBACK__ === true
+function allowsApiFailureFallback(error) {
+  if (globalThis.__ABLE_BAND_ALLOW_API_FAILURE_FALLBACK__ === true) {
+    return true
+  }
+
+  return Number(error?.status) >= 500
 }
 
 function shouldSurfaceApiError(error) {

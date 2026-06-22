@@ -47,8 +47,8 @@ public class MockDataStore {
 	private final Map<String, Long> accountIdsByToken = new HashMap<>();
 
 	public MockDataStore() {
-		Account userAccount = new Account(1, AccountRole.USER, "user@example.com", "password1234", "홍길동");
-		Account guardianAccount = new Account(2, AccountRole.GUARDIAN, "guardian@example.com", "password1234", "김보호");
+		Account userAccount = new Account(1, AccountRole.USER, "lglg@lgableband.com", "password1234", "홍길동");
+		Account guardianAccount = new Account(2, AccountRole.GUARDIAN, "lgp@lgableband.com", "password1234", "김보호");
 		this.accounts.put(userAccount.accountId(), userAccount);
 		this.accounts.put(guardianAccount.accountId(), guardianAccount);
 		Account adminAccount = new Account(3, AccountRole.USER, "admin@example.com", "password1234", "관리자");

@@ -1,7 +1,7 @@
 export const mockAccounts = [
   {
     role: 'USER',
-    email: 'user@example.com',
+    email: 'lglg@lgableband.com',
     passwordHash: createMockPasswordHash('password1234'),
     response: {
       accessToken: 'mock-user-token',
@@ -9,7 +9,7 @@ export const mockAccounts = [
       account: {
         accountId: 1,
         name: '엘지',
-        email: 'user@example.com',
+        email: 'lglg@lgableband.com',
       },
       userProfile: {
         userId: 1,
@@ -20,7 +20,7 @@ export const mockAccounts = [
   },
   {
     role: 'GUARDIAN',
-    email: 'guardian@example.com',
+    email: 'lgp@lgableband.com',
     passwordHash: createMockPasswordHash('password1234'),
     response: {
       accessToken: 'mock-guardian-token',
@@ -28,7 +28,7 @@ export const mockAccounts = [
       account: {
         accountId: 2,
         name: '보호자',
-        email: 'guardian@example.com',
+        email: 'lgp@lgableband.com',
       },
       guardianProfile: {
         guardianId: 1,
