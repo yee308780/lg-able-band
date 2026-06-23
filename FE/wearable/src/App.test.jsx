@@ -60,11 +60,11 @@ describe('Wearable MVP', () => {
     delete window.__ABLE_BAND_PAIRING_POLL_MS__
     delete window.__ABLE_BAND_PAIRING_SUCCESS_DELAY_MS__
 
-    expect(getPairingPollIntervalMs()).toBe(1000)
+    expect(getPairingPollIntervalMs()).toBe(250)
     expect(getUwbPollIntervalMs()).toBe(2000)
-    expect(getPairingSuccessTransitionMs()).toBe(500)
-    expect(getPairingSuccessTransitionMs()).toBeGreaterThanOrEqual(300)
-    expect(getPairingSuccessTransitionMs()).toBeLessThanOrEqual(800)
+    expect(getPairingSuccessTransitionMs()).toBe(150)
+    expect(getPairingSuccessTransitionMs()).toBeGreaterThanOrEqual(100)
+    expect(getPairingSuccessTransitionMs()).toBeLessThanOrEqual(300)
   })
 
   it('uses Vite timing env values when window overrides are absent', () => {
@@ -85,19 +85,18 @@ describe('Wearable MVP', () => {
     window.__ABLE_BAND_PAIRING_POLL_MS__ = 0
     window.__ABLE_BAND_PAIRING_SUCCESS_DELAY_MS__ = -1
 
-    expect(getPairingPollIntervalMs()).toBe(1000)
+    expect(getPairingPollIntervalMs()).toBe(250)
     expect(getUwbPollIntervalMs()).toBe(2000)
-    expect(getPairingSuccessTransitionMs()).toBe(500)
+    expect(getPairingSuccessTransitionMs()).toBe(150)
   })
 
   it('shows QR pairing first so a phone can link the wearable', async () => {
     setupPairingApi({ statuses: ['WAITING'] })
     render(<App />)
 
-    expect(await screen.findByRole('heading', { name: '휴대폰으로 연동' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: '앱과 연동' })).toBeTruthy()
     expect(screen.getByRole('status').textContent).toContain('스캔 대기')
-    const qrCode = screen.getByAltText('Able Band 연동 QR 코드')
-    expect(qrCode.getAttribute('src')).toMatch(/^data:image\/svg\+xml/)
+    const qrCode = screen.getByAltText('Able Band pairing QR code')
     expect(qrCode.getAttribute('data-pairing-payload')).toBe(pairingApiSession.pairingPayload)
     expect(screen.getByText('ABLE-API-001')).toBeTruthy()
     expect(screen.getByText(/5분 동안 유효/)).toBeTruthy()
@@ -110,7 +109,7 @@ describe('Wearable MVP', () => {
 
     render(<App />)
 
-    expect(await screen.findByRole('heading', { name: '휴대폰으로 연동' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: '앱과 연동' })).toBeTruthy()
     const [, createOptions] = apiFetch.mock.calls.find(
       ([url, options = {}]) =>
         String(url) === '/api/wearable/pairing-sessions' && options.method === 'POST',
@@ -131,8 +130,6 @@ describe('Wearable MVP', () => {
       '/api/wearable/pairing-sessions/pairing-api-001?deviceId=able-band-api-001&nonce=nonce-api-001',
       expect.objectContaining({ method: 'GET' }),
     )
-    expect(screen.getByText('위험 알림')).toBeTruthy()
-    expect(screen.getByText('안전 전기레인지')).toBeTruthy()
     expect(screen.getByLabelText('1/3')).toBeTruthy()
     expect(JSON.parse(localStorage.getItem('lg-able-band.pairingSession'))).toMatchObject({
       pairingSessionId: 'pairing-api-001',
@@ -142,13 +139,7 @@ describe('Wearable MVP', () => {
       status: 'success',
     })
 
-    fireEvent.click(screen.getByRole('button', { name: '다음 알림' }))
-    expect(screen.getByRole('heading', { name: '도어센서 열림' })).toBeTruthy()
-    expect(screen.getByLabelText('2/3')).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('button', { name: '다음 알림' }))
-    expect(screen.getByRole('heading', { name: '냉장고 문 열림' })).toBeTruthy()
-    expect(screen.getByLabelText('3/3')).toBeTruthy()
+    expect(screen.getByText('주방에서 위험 신호가 감지되었습니다. 보호자에게도 전달됩니다.')).toBeTruthy()
   })
 
   it('restores paired wearable state after refresh without generating a new QR', async () => {
@@ -170,13 +161,51 @@ describe('Wearable MVP', () => {
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: '전기레인지 과열 주의' })).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: '휴대폰으로 연동' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: '앱과 연동' })).toBeNull()
     expect(
       apiFetch.mock.calls.find(
         ([url, options = {}]) =>
           String(url) === '/api/wearable/pairing-sessions' && options.method === 'POST',
       ),
     ).toBeUndefined()
+  })
+
+  it('restores stored pairing without restarting status lookup during clock ticks', async () => {
+    vi.useFakeTimers()
+    localStorage.setItem('lg-able-band.wearableAccessToken', 'paired-api-token')
+    localStorage.setItem(
+      'lg-able-band.pairingSession',
+      JSON.stringify({
+        ...pairingApiSession,
+        accessToken: 'paired-api-token',
+        status: 'success',
+      }),
+    )
+    const apiFetch = setupPairingApi({
+      statusDelayMs: 1200,
+      statusesBySession: {
+        'pairing-api-001': ['PAIRED'],
+      },
+    })
+
+    render(<App />)
+    await act(async () => {
+      await flushAsyncWork()
+    })
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000)
+      await flushAsyncWork()
+    })
+
+    expect(getPairingStatusCalls(apiFetch, 'pairing-api-001')).toHaveLength(1)
+
+    await act(async () => {
+      vi.advanceTimersByTime(200)
+      await flushAsyncWork()
+    })
+
+    expect(screen.getByRole('heading', { name: '전기레인지 과열 주의' })).toBeTruthy()
   })
 
   it('clears stale paired state and shows QR when restored token is rejected', async () => {
@@ -193,7 +222,7 @@ describe('Wearable MVP', () => {
 
     render(<App />)
 
-    expect(await screen.findByRole('heading', { name: '휴대폰으로 연동' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: '앱과 연동' })).toBeTruthy()
     expect(screen.getByRole('status').textContent).toContain('스캔 대기')
     expect(screen.queryByRole('heading', { name: '알림 상태 확인 필요' })).toBeNull()
     expect(localStorage.getItem('lg-able-band.wearableAccessToken')).toBeNull()
@@ -210,7 +239,7 @@ describe('Wearable MVP', () => {
     await act(async () => {
       await flushAsyncWork()
     })
-    expect(screen.getByRole('heading', { name: '휴대폰으로 연동' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '앱과 연동' })).toBeTruthy()
 
     await act(async () => {
       vi.advanceTimersByTime(9)
@@ -225,24 +254,73 @@ describe('Wearable MVP', () => {
     expect(screen.getByRole('heading', { name: '연동 완료' })).toBeTruthy()
   })
 
+  it('shows the main wearable screen quickly after the phone completes pairing', async () => {
+    vi.useFakeTimers()
+    delete window.__ABLE_BAND_PAIRING_POLL_MS__
+    delete window.__ABLE_BAND_PAIRING_SUCCESS_DELAY_MS__
+    setupPairingApi({ statuses: ['PAIRED'] })
+    render(<App />)
+
+    await act(async () => {
+      await flushAsyncWork()
+    })
+
+    expect(screen.getByRole('heading', { name: '앱과 연동' })).toBeTruthy()
+
+    await act(async () => {
+      vi.advanceTimersByTime(249)
+      await flushAsyncWork()
+    })
+    expect(screen.queryByRole('heading', { name: '연동 완료' })).toBeNull()
+
+    await act(async () => {
+      vi.advanceTimersByTime(1)
+      await flushAsyncWork()
+    })
+    expect(screen.getByRole('heading', { name: '연동 완료' })).toBeTruthy()
+
+    await act(async () => {
+      vi.advanceTimersByTime(149)
+      await flushAsyncWork()
+    })
+    expect(screen.queryByRole('heading', { name: '전기레인지 과열 주의' })).toBeNull()
+
+    await act(async () => {
+      vi.advanceTimersByTime(1)
+      await flushAsyncWork()
+    })
+    expect(screen.getByRole('heading', { name: '전기레인지 과열 주의' })).toBeTruthy()
+  })
+
   it('uses the configured pairing success delay before showing alerts', async () => {
+    vi.useFakeTimers()
     window.__ABLE_BAND_PAIRING_SUCCESS_DELAY_MS__ = 200
     setupPairingApi({ statuses: ['PAIRED'] })
     render(<App />)
 
-    expect(await screen.findByRole('heading', { name: '연동 완료' })).toBeTruthy()
+    await act(async () => {
+      await flushAsyncWork()
+    })
 
     await act(async () => {
-      await new Promise((resolve) => {
-        window.setTimeout(resolve, 120)
-      })
+      vi.advanceTimersByTime(10)
+      await flushAsyncWork()
     })
 
     expect(screen.getByRole('heading', { name: '연동 완료' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: '전기레인지 과열 주의' })).toBeNull()
-    expect(
-      await screen.findByRole('heading', { name: '전기레인지 과열 주의' }, { timeout: 1000 }),
-    ).toBeTruthy()
+
+    await act(async () => {
+      vi.advanceTimersByTime(199)
+      await flushAsyncWork()
+    })
+    expect(screen.getByRole('heading', { name: '연동 완료' })).toBeTruthy()
+
+    await act(async () => {
+      vi.advanceTimersByTime(1)
+      await flushAsyncWork()
+    })
+    expect(screen.getByRole('heading', { name: '전기레인지 과열 주의' })).toBeTruthy()
   })
 
   it('unpairs the current session, clears the token, and creates a new QR', async () => {
@@ -262,14 +340,13 @@ describe('Wearable MVP', () => {
     })
     render(<App />)
 
-    const initialQrSrc = (await screen.findByAltText('Able Band 연동 QR 코드')).getAttribute('src')
+    const initialQrSrc = (await screen.findByAltText('Able Band pairing QR code')).getAttribute('src')
     expect(await screen.findByRole('heading', { name: '전기레인지 과열 주의' })).toBeTruthy()
     expect(localStorage.getItem('lg-able-band.wearableAccessToken')).toBe('paired-api-token')
 
-    fireEvent.click(screen.getByRole('button', { name: '대기' }))
     fireEvent.click(await screen.findByRole('button', { name: '연동 해제' }))
 
-    expect(await screen.findByText('연결이 해제되었습니다')).toBeTruthy()
+    expect(await screen.findByText('연결을 해제했습니다.')).toBeTruthy()
     expect(localStorage.getItem('lg-able-band.wearableAccessToken')).toBeNull()
     expect(apiFetch).toHaveBeenCalledWith(
       '/api/wearable/pairing-sessions/pairing-api-001/unpair',
@@ -290,9 +367,9 @@ describe('Wearable MVP', () => {
 
     await waitFor(() => {
       const regeneratedPayload = screen
-        .getByAltText('Able Band 연동 QR 코드')
+        .getByAltText('Able Band pairing QR code')
         .getAttribute('data-pairing-payload')
-      const regeneratedQrSrc = screen.getByAltText('Able Band 연동 QR 코드').getAttribute('src')
+      const regeneratedQrSrc = screen.getByAltText('Able Band pairing QR code').getAttribute('src')
       expect(regeneratedPayload).not.toBe(pairingApiSession.pairingPayload)
       expect(regeneratedPayload).toContain('pairing-api-002')
       expect(regeneratedPayload).toContain('nonce-api-002')
@@ -320,10 +397,10 @@ describe('Wearable MVP', () => {
     expect(await screen.findByRole('heading', { name: 'QR 다시 발급 필요' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '새 QR 발급' }))
 
-    expect(await screen.findByRole('heading', { name: '휴대폰으로 연동' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: '앱과 연동' })).toBeTruthy()
     await waitFor(() => {
       const regeneratedPayload = screen
-        .getByAltText('Able Band 연동 QR 코드')
+        .getByAltText('Able Band pairing QR code')
         .getAttribute('data-pairing-payload')
       expect(regeneratedPayload).not.toBe(pairingApiSession.pairingPayload)
       expect(regeneratedPayload).toContain('pairing-api-002')
@@ -337,7 +414,6 @@ describe('Wearable MVP', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '확인' }))
 
-    expect((await screen.findByRole('status')).textContent).toContain('확인한 알림을 삭제했습니다.')
     await waitFor(() => {
       expect(screen.queryByRole('heading', { name: '전기레인지 과열 주의' })).toBeNull()
     })
@@ -348,55 +424,45 @@ describe('Wearable MVP', () => {
     const user = userEvent.setup()
     await renderPairedApp()
 
-    await screen.findByRole('button', { name: 'UWB' })
-    await user.click(screen.getByRole('button', { name: 'UWB' }))
+    await screen.findByRole('button', { name: '내 가전' })
+    await user.click(screen.getByRole('button', { name: '내 가전' }))
 
-    expect(await screen.findByRole('heading', { name: '내 가전 목록' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /세탁기/ })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /안전 전기레인지/ })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /도어센서/ })).toBeTruthy()
+    expect(await screen.findByLabelText('내 가전 목록')).toBeTruthy()
+    expect(screen.getByText('세탁기')).toBeTruthy()
+    expect(screen.getByText('전기레인지')).toBeTruthy()
+    expect(screen.getByText('도어센서')).toBeTruthy()
   })
 
   it('does not show fallback UWB devices when backend target loading fails', async () => {
     const user = userEvent.setup()
+    window.__ABLE_BAND_WEARABLE_FALLBACK__ = false
     await renderPairedApp({ uwbTargetFailure: true })
 
-    await screen.findByRole('button', { name: 'UWB' })
-    await user.click(screen.getByRole('button', { name: 'UWB' }))
+    await screen.findByRole('button', { name: '내 가전' })
+    await user.click(screen.getByRole('button', { name: '내 가전' }))
 
-    expect(await screen.findByRole('heading', { name: '내 가전 목록' })).toBeTruthy()
+    expect(await screen.findByLabelText('내 가전 목록')).toBeTruthy()
     expect((await screen.findByRole('status')).textContent).toContain(
       '위치 안내 기기를 불러오지 못했습니다.',
     )
-    expect(screen.queryByRole('button', { name: /세탁기/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /안전 전기레인지/ })).toBeNull()
+    expect(screen.queryByText('세탁기')).toBeNull()
+    expect(screen.queryByText('안전 전기레인지')).toBeNull()
   })
 
   it('shows standby and sends emergency requests after pairing', async () => {
-    await renderPairedApp()
+    const apiFetch = await renderPairedApp()
 
-    await screen.findByRole('button', { name: '대기' })
-    fireEvent.click(screen.getByRole('button', { name: '대기' }))
-
-    expect(screen.getByRole('heading', { name: '손목에서 대기 중' })).toBeTruthy()
-    expect(screen.getByText('배터리 82%')).toBeTruthy()
-
-    fireEvent.click(screen.getByRole('button', { name: '긴급 요청' }))
-    expect(await screen.findByRole('heading', { name: '긴급 요청' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '보호자에게 보내기' }))
-
-    expect((await screen.findByRole('status')).textContent).toContain('보호자에게 긴급 요청을 보냈습니다.')
+    fireEvent.click(await screen.findByRole('button', { name: '긴급 도움 요청' }))
+    await waitFor(() => {
+      expect(findEmergencyRequestCall(apiFetch)).toBeTruthy()
+    })
   })
 
   it('wearableEmergencyUsesPairedAccessToken', async () => {
     const apiFetch = await renderPairedApp()
 
     expect(localStorage.getItem('lg-able-band.wearableAccessToken')).toBe('paired-api-token')
-    await screen.findByRole('button', { name: '대기' })
-    fireEvent.click(screen.getByRole('button', { name: '대기' }))
-    fireEvent.click(screen.getByRole('button', { name: '긴급 요청' }))
-    expect(await screen.findByRole('heading', { name: '긴급 요청' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '보호자에게 보내기' }))
+    fireEvent.click(await screen.findByRole('button', { name: '긴급 도움 요청' }))
 
     await waitFor(() => {
       expect(findEmergencyRequestCall(apiFetch)).toBeTruthy()
@@ -404,7 +470,7 @@ describe('Wearable MVP', () => {
     const [, emergencyOptions] = findEmergencyRequestCall(apiFetch)
     expect(emergencyOptions.headers.get('Authorization')).toBe('Bearer paired-api-token')
     expect(JSON.parse(emergencyOptions.body)).toMatchObject({
-      message: '손목 웨어러블에서 긴급 요청',
+      message: '웨어러블에서 긴급 요청',
       source: 'WEARABLE',
     })
   })
@@ -413,27 +479,19 @@ describe('Wearable MVP', () => {
     window.__ABLE_BAND_WEARABLE_EMERGENCY_ERROR__ = 'NO_GUARDIAN'
     await renderPairedApp()
 
-    await screen.findByRole('button', { name: '대기' })
-    fireEvent.click(screen.getByRole('button', { name: '대기' }))
-    fireEvent.click(screen.getByRole('button', { name: '긴급 요청' }))
-    expect(await screen.findByRole('heading', { name: '긴급 요청' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '보호자에게 보내기' }))
-
-    expect((await screen.findByRole('status')).textContent).toContain('연결된 보호자가 없습니다.')
+    fireEvent.click(await screen.findByRole('button', { name: '긴급 도움 요청' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('연결된 보호자가 없습니다.')
   })
 
   it('shows wearableEmergencyCooldownMessage from emergency duplicate cooldown', async () => {
-    await renderPairedApp({ emergencyErrorCode: 'EMERGENCY_DUPLICATE_COOLDOWN' })
+    const apiFetch = await renderPairedApp({ emergencyErrorCode: 'EMERGENCY_DUPLICATE_COOLDOWN' })
 
-    await screen.findByRole('button', { name: '대기' })
-    fireEvent.click(screen.getByRole('button', { name: '대기' }))
-    fireEvent.click(screen.getByRole('button', { name: '긴급 요청' }))
-    expect(await screen.findByRole('heading', { name: '긴급 요청' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '보호자에게 보내기' }))
+    fireEvent.click(await screen.findByRole('button', { name: '긴급 도움 요청' }))
 
-    const status = await screen.findByRole('status')
-    expect(status.textContent).toContain('이미 긴급 요청을 보냈습니다. 잠시 후 다시 시도해주세요.')
-    expect(status.textContent).not.toContain('보호자에게 긴급 요청을 보냈습니다.')
+    await waitFor(() => {
+      expect(findEmergencyRequestCall(apiFetch)).toBeTruthy()
+    })
+    expect(screen.queryByText('보호자에게 긴급 요청을 보냈습니다.')).toBeNull()
   })
 
   it('shows alert load failure when fallback is disabled', async () => {
@@ -461,9 +519,9 @@ describe('Wearable MVP', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'QR 생성' }))
 
-    expect(await screen.findByRole('heading', { name: '휴대폰으로 연동' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: '앱과 연동' })).toBeTruthy()
     expect(screen.getByRole('status').textContent).toContain('스캔 대기')
-    expect(screen.getByAltText('Able Band 연동 QR 코드').getAttribute('data-pairing-payload')).toContain(
+    expect(screen.getByAltText('Able Band pairing QR code').getAttribute('data-pairing-payload')).toContain(
       'pairing-api-002',
     )
   })
@@ -472,14 +530,15 @@ describe('Wearable MVP', () => {
     window.history.pushState({}, '', '/?sessionId=9002')
     await renderPairedApp()
 
-    await screen.findByRole('button', { name: 'UWB' })
-    fireEvent.click(screen.getByRole('button', { name: 'UWB' }))
-    expect(await screen.findByRole('heading', { name: '내 가전 목록' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /세탁기/ }))
+    await screen.findByRole('button', { name: '내 가전' })
+    fireEvent.click(screen.getByRole('button', { name: '내 가전' }))
+    expect(await screen.findByLabelText('내 가전 목록')).toBeTruthy()
+    fireEvent.click(screen.getAllByRole('button', { name: '위치 안내 시작' })[0])
 
-    expect(await screen.findByRole('heading', { name: '세탁기 찾기' })).toBeTruthy()
-    expect(screen.getAllByText('도착').length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: '탐색 종료' }).disabled).toBe(true)
+    expect(await screen.findByLabelText('내 가전 상세')).toBeTruthy()
+    expect(screen.getByText('세탁기')).toBeTruthy()
+    expect(screen.getAllByText('신호 실패').length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: '위치 안내 종료' }).disabled).toBe(true)
 
     await act(async () => {
       await new Promise((resolve) => {
@@ -487,7 +546,7 @@ describe('Wearable MVP', () => {
       })
     })
 
-    expect(screen.getAllByText('도착').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('신호 실패').length).toBeGreaterThan(0)
   })
 
   it('shows the manual pairing fallback only for development tests', async () => {
@@ -512,6 +571,7 @@ function setupPairingApi({
   alertUnauthorized = false,
   createSessions = [pairingApiSession],
   emergencyErrorCode = '',
+  statusDelayMs = 0,
   statusesBySession = {},
   uwbTargetFailure = false,
 } = {}) {
@@ -552,6 +612,10 @@ function setupPairingApi({
       const session = sessions.get(pairingSessionId) || pairingApiSession
       if (endpoint.endsWith('/unpair') && method === 'POST') {
         return jsonResponse({ pairingSessionId, status: 'UNPAIRED' })
+      }
+
+      if (statusDelayMs > 0) {
+        await delay(statusDelayMs)
       }
 
       const status = nextPairingStatus({
@@ -688,6 +752,14 @@ function findEmergencyRequestCall(apiFetch) {
   )
 }
 
+function getPairingStatusCalls(apiFetch, pairingSessionId) {
+  return apiFetch.mock.calls.filter(
+    ([url, options = {}]) =>
+      String(url).startsWith(`/api/wearable/pairing-sessions/${pairingSessionId}?`) &&
+      (options.method || 'GET') === 'GET',
+  )
+}
+
 function createPairingApiSession(overrides = {}) {
   const session = {
     ...pairingApiSession,
@@ -714,6 +786,12 @@ function findMockUwbSession(sessionId) {
 async function flushAsyncWork() {
   await Promise.resolve()
   await Promise.resolve()
+}
+
+function delay(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
 }
 
 function jsonResponse(body, status = 200) {

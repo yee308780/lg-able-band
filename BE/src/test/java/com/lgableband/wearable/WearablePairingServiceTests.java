@@ -22,9 +22,47 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class WearablePairingServiceTests {
+
+	@Test
+	void createSessionReturnsExistingWaitingSessionWithoutCleanupWrites() {
+		MvpDataService dataService = mock(MvpDataService.class);
+		DeviceService deviceService = mock(DeviceService.class);
+		WearablePairingRepository repository = mock(WearablePairingRepository.class);
+		Clock clock = Clock.fixed(Instant.parse("2026-06-10T00:00:00Z"), ZoneOffset.ofHours(9));
+		WearablePairingSession existing = WearablePairingSession.waiting(
+			"pairing-existing",
+			"able-band-existing",
+			"LG Able Band",
+			"ABLE-4IN-260610",
+			"existing-nonce",
+			OffsetDateTime.parse("2026-06-10T09:00:00+09:00"),
+			OffsetDateTime.parse("2026-06-10T09:05:00+09:00")
+		);
+		when(repository.findWaitingSessionForDevice(eq("able-band-existing"), any(OffsetDateTime.class)))
+			.thenReturn(Optional.of(existing));
+		WearablePairingService service = new WearablePairingService(
+			dataService,
+			deviceService,
+			repository,
+			300,
+			clock
+		);
+
+		WearablePairingService.PairingSessionResponse created = service.createSession(
+			"able-band-existing",
+			"LG Able Band",
+			"ABLE-4IN-260610"
+		);
+
+		assertThat(created.pairingSessionId()).isEqualTo("pairing-existing");
+		assertThat(created.nonce()).isEqualTo("existing-nonce");
+		verify(repository, never()).save(any(WearablePairingSession.class));
+		verify(repository, never()).expireWaitingSessionsForDevice(any(), any());
+	}
 
 	@Test
 	void completeUsesQrVerifiedWearableClaimPath() {
