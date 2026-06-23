@@ -43,7 +43,7 @@ const ALERT_POLL_INTERVAL_MS = 3000
 const BOTTOM_SHEET_COLLAPSED_PEEK = 34
 
 function App() {
-  const initialPairing = getStoredPairedPairingSession()
+  const [initialPairing] = useState(() => getStoredPairedPairingSession())
   const [isPaired, setIsPaired] = useState(false)
   const [mode, setMode] = useState('alert')
   const [pairingStatus, setPairingStatus] = useState(getInitialPairingStatus())
@@ -76,6 +76,7 @@ function App() {
   const isUwbPollingRef = useRef(true)
   const pairingPollTimerRef = useRef(null)
   const pairingCompleteTimerRef = useRef(null)
+  const pairingSessionRequestRef = useRef(null)
   const pairingCompletedRef = useRef(false)
   const livingSignalSessionRef = useRef(null)
   const livingSignalCooldownRef = useRef({ key: '', at: 0 })
@@ -400,7 +401,7 @@ function App() {
 
     async function startPairingSession() {
       try {
-        const nextSession = await createPairingSession()
+        const nextSession = await getPairingSessionRequest(pairingSessionRequestRef, pairingGeneration)
         if (!isMounted || pairingCompletedRef.current) {
           return
         }
@@ -1299,6 +1300,21 @@ function mergePairingSession(currentSession, nextSession) {
     expiresInMinutes: nextSession.expiresInMinutes || currentSession.expiresInMinutes,
     pairingPayload: currentSession.pairingPayload || nextSession.pairingPayload,
   }
+}
+
+function getPairingSessionRequest(requestRef, generation) {
+  const currentRequest = requestRef.current
+  if (currentRequest?.generation === generation) {
+    return currentRequest.promise
+  }
+
+  const promise = createPairingSession().finally(() => {
+    if (requestRef.current?.promise === promise) {
+      requestRef.current = null
+    }
+  })
+  requestRef.current = { generation, promise }
+  return promise
 }
 
 function formatEmergencyErrorMessage(error) {

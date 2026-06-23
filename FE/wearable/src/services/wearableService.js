@@ -38,10 +38,9 @@ export function createWearableService({
   return {
     async createPairingSession() {
       const pairingSession = getMockPairingSession()
-      await assertPersistentPairingReady(request)
       return withFallback({
         apiEnabled: isPairingApiEnabled(),
-        fallbackEnabled,
+        fallbackEnabled: isExplicitDevelopmentFallbackEnabled(fallbackEnabled),
         fallback: getMockPairingSession,
         request: async () =>
           normalizePairingSession(
@@ -67,28 +66,26 @@ export function createWearableService({
         return { status: 'UNPAIRED' }
       }
 
-      try {
-        return await withFallback({
-          apiEnabled: isPairingApiEnabled(),
-          fallbackEnabled,
-          fallback: () => ({ pairingSessionId, status: 'UNPAIRED' }),
-          request: async () => {
-            const unpaired = await request(pairingUnpairPath(pairingSession), {
-              method: 'POST',
-              body: {
-                deviceId: pairingSession?.deviceId,
-                nonce: pairingSession?.nonce,
-              },
-            })
-            return {
-              pairingSessionId,
-              status: unpaired?.status || 'UNPAIRED',
-            }
-          },
-        })
-      } finally {
-        clearWearableAccessToken()
-      }
+      const unpaired = await withFallback({
+        apiEnabled: isPairingApiEnabled(),
+        fallbackEnabled: isExplicitDevelopmentFallbackEnabled(fallbackEnabled),
+        fallback: () => ({ pairingSessionId, status: 'UNPAIRED' }),
+        request: async () => {
+          const response = await request(pairingUnpairPath(pairingSession), {
+            method: 'POST',
+            body: {
+              deviceId: pairingSession?.deviceId,
+              nonce: pairingSession?.nonce,
+            },
+          })
+          return {
+            pairingSessionId,
+            status: response?.status || 'UNPAIRED',
+          }
+        },
+      })
+      clearWearableAccessToken()
+      return unpaired
     },
     async getCurrentAlert() {
       const alerts = await this.getCurrentAlerts()
@@ -546,46 +543,6 @@ function pairingCreateBody(pairingSession) {
   }
 }
 
-async function assertPersistentPairingReady(request) {
-  if (!shouldRequirePersistentPairing()) {
-    return
-  }
-
-  try {
-    const status = await request('/api/db/status', { method: 'GET' })
-    if (status?.connected === true) {
-      return
-    }
-  } catch {
-    throwPersistentPairingUnavailable()
-  }
-
-  throwPersistentPairingUnavailable()
-}
-
-function throwPersistentPairingUnavailable() {
-  throw new Error(
-    '공유 DB에 연결된 백엔드가 필요합니다. 앱과 웨어러블을 서로 다른 컴퓨터에서 실행한다면 QR을 띄우는 컴퓨터의 BE/.env도 같은 DB를 보게 설정한 뒤 새 QR을 발급해주세요.',
-  )
-}
-
-function shouldRequirePersistentPairing() {
-  const explicitFlag = globalThis.__ABLE_BAND_REQUIRE_PERSISTENT_PAIRING__
-  if (explicitFlag === true || explicitFlag === false) {
-    return explicitFlag
-  }
-
-  const configuredFlag = import.meta.env.VITE_REQUIRE_PERSISTENT_PAIRING
-  if (configuredFlag === 'true') {
-    return true
-  }
-  if (configuredFlag === 'false') {
-    return false
-  }
-
-  return !allowsApiFailureFallback()
-}
-
 function appendQueryParam(params, key, value) {
   if (value !== undefined && value !== null && value !== '') {
     params.set(key, String(value))
@@ -759,6 +716,10 @@ function requestMockEmergencyHelp(message) {
     ...clone(mockEmergencyResponse),
     requestMessage: message,
   }
+}
+
+function isExplicitDevelopmentFallbackEnabled(fallbackEnabled) {
+  return fallbackEnabled && globalThis.__ABLE_BAND_ALLOW_API_FAILURE_FALLBACK__ === true
 }
 
 async function withFallback({ apiEnabled, fallbackEnabled, fallback, request }) {

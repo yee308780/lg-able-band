@@ -79,11 +79,18 @@ public class WearablePairingRepository {
 		return Optional.ofNullable(SESSIONS.get(pairingSessionId));
 	}
 
-	public Optional<WearablePairingSession> findWaitingSessionForDevice(String deviceId) {
+	public Optional<WearablePairingSession> findWaitingSessionForDevice(String deviceId, OffsetDateTime now) {
+		Optional<WearablePairingSession> memorySession = SESSIONS.values().stream()
+			.filter(session -> isWaitingSessionForDevice(session, deviceId, now))
+			.max((left, right) -> left.issuedAt().compareTo(right.issuedAt()));
+		if (memorySession.isPresent()) {
+			return memorySession;
+		}
+
 		JdbcTemplate jdbcTemplate = jdbcTemplate();
 		if (jdbcTemplate != null) {
 			try {
-				List<WearablePairingSession> sessions = findWaitingSessionForDeviceDb(jdbcTemplate, deviceId);
+				List<WearablePairingSession> sessions = findWaitingSessionForDeviceDb(jdbcTemplate, deviceId, now);
 				if (!sessions.isEmpty()) {
 					WearablePairingSession session = sessions.getFirst();
 					SESSIONS.put(session.pairingSessionId(), session);
@@ -92,9 +99,7 @@ public class WearablePairingRepository {
 			} catch (DataAccessException ignored) {
 			}
 		}
-		return SESSIONS.values().stream()
-			.filter(session -> isWaitingSessionForDevice(session, deviceId))
-			.max((left, right) -> left.issuedAt().compareTo(right.issuedAt()));
+		return Optional.empty();
 	}
 
 	public Optional<WearablePairingSession> expire(String pairingSessionId) {
@@ -244,7 +249,8 @@ public class WearablePairingRepository {
 
 	private List<WearablePairingSession> findWaitingSessionForDeviceDb(
 		JdbcTemplate jdbcTemplate,
-		String deviceId
+		String deviceId,
+		OffsetDateTime now
 	) {
 		return jdbcTemplate.query(
 			"""
@@ -272,11 +278,13 @@ public class WearablePairingRepository {
 			LEFT JOIN device d ON d.device_id = w.linked_device_id
 			WHERE w.device_id = ?
 			  AND w.status = 'WAITING'
+			  AND w.expires_at > ?
 			ORDER BY w.issued_at DESC, w.created_at DESC
 			LIMIT 1
 			""",
 			this::mapSession,
-			deviceId
+			deviceId,
+			toLocalDateTime(now)
 		);
 	}
 
@@ -303,9 +311,10 @@ public class WearablePairingRepository {
 			&& !now.isBefore(session.expiresAt());
 	}
 
-	private boolean isWaitingSessionForDevice(WearablePairingSession session, String deviceId) {
+	private boolean isWaitingSessionForDevice(WearablePairingSession session, String deviceId, OffsetDateTime now) {
 		return session.status() == WearablePairingService.PairingStatus.WAITING
-			&& session.deviceId().equals(deviceId);
+			&& session.deviceId().equals(deviceId)
+			&& now.isBefore(session.expiresAt());
 	}
 
 	private boolean isOtherWaitingSessionForDevice(
