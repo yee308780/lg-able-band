@@ -20,16 +20,17 @@ const TURN_CUE_AUDIO_SRC = '/chatbot-turn-cue.mp3'
 const TURN_BEEP_DURATION_MS = 180
 const TURN_BEEP_FREQUENCY_HZ = 880
 const TURN_CUE_MAX_MS = 420
-const POST_CUE_LISTEN_DELAY_MS = 180
-const USER_SILENCE_MS = 2200
-const WAITING_USER_TIMEOUT_MS = 9000
-const RECOGNITION_STUCK_RESTART_MS = 3500
+const POST_CUE_LISTEN_DELAY_MS = 350
+const USER_SILENCE_MS = 3000
+const WAITING_USER_TIMEOUT_MS = 11000
+const RECOGNITION_STUCK_RESTART_MS = 7000
 const MIN_USER_TRANSCRIPT_CHARS = 2
 const UWB_POLL_INTERVAL_MS = 2500
-const WAKE_RESTART_DELAY_MS = 100
+const WAKE_RESTART_DELAY_MS = 700
 const WAKE_BLOCKED_RESTART_DELAY_MS = 3000
-const WAKE_STUCK_RESTART_MS = 7000
-const USER_RESTART_DELAY_MS = 450
+const WAKE_STUCK_RESTART_MS = 10000
+const USER_RESTART_DELAY_MS = 1300
+const WAKE_OPEN_DEDUPE_MS = 1800
 const CONVERSATION_STATE = {
   IDLE: 'IDLE',
   WAKE_DETECTED: 'WAKE_DETECTED',
@@ -158,6 +159,9 @@ let speechFallbackTimer = null
 let speechHardFallbackTimer = null
 let chatbotSpeakingChangeHandler = null
 let speechQueue = Promise.resolve()
+let wearableChatbotInstanceSeq = 0
+let activeWakeOwnerId = null
+let lastWakeOpenAt = 0
 
 const quickPhrases = [
   { id: 'help', icon: '🫶', text: '도와주세요' },
@@ -342,6 +346,13 @@ export function VoiceChatbot({
   const voiceFeedbackEnabled = notificationSettings.voiceGuide === true
   const vibrationFeedbackEnabled = notificationSettings.vibrationGuide === true
   const supportsSpeechRecognition = Boolean(getSpeechRecognitionConstructor())
+  const instanceIdRef = useRef(null)
+  const introConversationStartedRef = useRef(false)
+
+  if (instanceIdRef.current === null) {
+    wearableChatbotInstanceSeq += 1
+    instanceIdRef.current = wearableChatbotInstanceSeq
+  }
 
   useEffect(() => {
     isOpenRef.current = isOpen
@@ -396,15 +407,24 @@ export function VoiceChatbot({
   )
 
   useEffect(() => {
-    globalThis.__ABLE_BAND_OPEN_WEARABLE_CHATBOT__ = () => openChatbot({ fromWake: true })
+    const openWearableChatbot = () => {
+      if (activeWakeOwnerId !== null && activeWakeOwnerId !== instanceIdRef.current) {
+        return
+      }
+      openChatbot({ fromWake: true })
+    }
+    globalThis.__ABLE_BAND_OPEN_WEARABLE_CHATBOT__ = openWearableChatbot
 
     function handleExternalWake() {
+      if (activeWakeOwnerId !== instanceIdRef.current) {
+        return
+      }
       openChatbot({ fromWake: true })
     }
 
     globalThis.addEventListener?.('lg-able-band:open-wearable-chatbot', handleExternalWake)
     return () => {
-      if (globalThis.__ABLE_BAND_OPEN_WEARABLE_CHATBOT__) {
+      if (globalThis.__ABLE_BAND_OPEN_WEARABLE_CHATBOT__ === openWearableChatbot) {
         delete globalThis.__ABLE_BAND_OPEN_WEARABLE_CHATBOT__
       }
       globalThis.removeEventListener?.('lg-able-band:open-wearable-chatbot', handleExternalWake)
@@ -413,9 +433,18 @@ export function VoiceChatbot({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function openChatbot({ fromWake = false, autoListen = fromWake } = {}) {
+  function openChatbot({ fromWake = false, autoListen = fromWake, skipWakeDedupe = false } = {}) {
+    if (fromWake && !skipWakeDedupe && !claimWakeOpen(instanceIdRef.current)) {
+      return
+    }
+
+    if (isOpenRef.current && autoListen && introConversationStartedRef.current) {
+      return
+    }
+
     isOpenRef.current = true
     autoListenRef.current = autoListen
+    introConversationStartedRef.current = false
     latestTranscriptRef.current = ''
     userSpeechHandledRef.current = false
     idlePromptGivenRef.current = false
@@ -447,6 +476,7 @@ export function VoiceChatbot({
   function closeChatbot() {
     isOpenRef.current = false
     autoListenRef.current = false
+    introConversationStartedRef.current = false
     latestTranscriptRef.current = ''
     userSpeechHandledRef.current = false
     idlePromptGivenRef.current = false
@@ -489,6 +519,12 @@ export function VoiceChatbot({
     if (!isOpenRef.current) {
       return
     }
+
+    if (introConversationStartedRef.current) {
+      return
+    }
+
+    introConversationStartedRef.current = true
 
     await playTurnBeep()
     if (!isOpenRef.current) {
@@ -861,7 +897,7 @@ export function VoiceChatbot({
       if (event?.error === 'no-speech') {
         if (isOpenRef.current && !userSpeechHandledRef.current) {
           setVoiceStatus('말씀해주세요.')
-          window.setTimeout(() => startVoiceTurn(), 1200)
+          window.setTimeout(() => startVoiceTurn(), USER_RESTART_DELAY_MS)
         }
         return
       }
@@ -920,7 +956,11 @@ export function VoiceChatbot({
 
     if (!isMeaningfulTranscript(spokenText)) {
       setVoiceStatus('말을 기다리는 중...')
-      startVoiceTurn()
+      window.setTimeout(() => {
+        if (isOpenRef.current && !userSpeechHandledRef.current) {
+          startVoiceTurn()
+        }
+      }, USER_RESTART_DELAY_MS)
       return
     }
 
@@ -1436,6 +1476,11 @@ export function VoiceChatbot({
       return
     }
 
+    if (activeWakeOwnerId !== null && activeWakeOwnerId !== instanceIdRef.current) {
+      return
+    }
+
+    activeWakeOwnerId = instanceIdRef.current
     setChatbotAudioLock(false)
     const recognition = new SpeechRecognition()
     recognition.lang = 'ko-KR'
@@ -1620,12 +1665,26 @@ export function VoiceChatbot({
       // Recognition can already be stopped by the browser.
     }
     wakeRecognitionRef.current = null
+    if (activeWakeOwnerId === instanceIdRef.current) {
+      activeWakeOwnerId = null
+    }
     onWakeListeningChange?.(false)
   }
 
   function finishWakeSpeech() {
     window.clearTimeout(wakeSilenceTimerRef.current)
     if (!wakeMatchedRef.current || isOpenRef.current) {
+      return
+    }
+
+    if (!claimWakeOpen(instanceIdRef.current)) {
+      wakeMatchedRef.current = false
+      try {
+        wakeRecognitionRef.current?.abort?.()
+      } catch {
+        // Recognition can already be stopped by the browser.
+      }
+      wakeRecognitionRef.current = null
       return
     }
 
@@ -1636,7 +1695,7 @@ export function VoiceChatbot({
       // Recognition can already be stopped by the browser.
     }
     wakeRecognitionRef.current = null
-    openChatbot({ fromWake: true })
+    openChatbot({ fromWake: true, autoListen: true, skipWakeDedupe: true })
   }
 
   function stopRecognition({ abort = true } = {}) {
@@ -1698,7 +1757,7 @@ export function VoiceChatbot({
       if (isOpenRef.current && !userSpeechHandledRef.current && !latestTranscriptRef.current) {
         startVoiceTurn()
       }
-    }, 1800)
+    }, 2500)
   }
 
   function scheduleUserSpeechEnd(text) {
@@ -1718,7 +1777,11 @@ export function VoiceChatbot({
       stopRecognition()
 
       if (idlePromptGivenRef.current) {
-        startVoiceTurn()
+        window.setTimeout(() => {
+          if (isOpenRef.current && !latestTranscriptRef.current && !userSpeechHandledRef.current) {
+            startVoiceTurn()
+          }
+        }, USER_RESTART_DELAY_MS)
         return
       }
 
@@ -2736,6 +2799,17 @@ function setChatbotSpeaking(isSpeaking) {
 
 function setChatbotAudioLock(isLocked) {
   globalThis.__ABLE_BAND_CHATBOT_AUDIO_LOCK__ = isLocked
+}
+
+function claimWakeOpen(instanceId) {
+  const now = Date.now()
+  if (now - lastWakeOpenAt < WAKE_OPEN_DEDUPE_MS) {
+    return false
+  }
+
+  lastWakeOpenAt = now
+  activeWakeOwnerId = instanceId
+  return true
 }
 
 async function playTurnBeep() {
