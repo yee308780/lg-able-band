@@ -708,6 +708,12 @@ export function VoiceChatbot({
       return startLocationGuideFlow(text, displayText, continueConversation)
     }
 
+    if (isDeviceStatusCommand(text)) {
+      const responseText = deviceStatusResponse(text, preview?.devices || [])
+      respondWithLocalAssistant(displayText, responseText, continueConversation)
+      return true
+    }
+
     if (isGuardianConnectCommand(text)) {
       appFlowRef.current = { type: 'guardianConnect', step: 'email' }
       respondWithLocalAssistant(
@@ -2119,6 +2125,82 @@ function isLocationGuideCommand(text) {
   return asksLocation && mentionsDevice
 }
 
+function isDeviceStatusCommand(text) {
+  const normalized = normalizeSpeechText(text)
+  return normalized.includes('상태') && Boolean(findStatusDevice(text, []))
+}
+
+function deviceStatusResponse(text, devices = []) {
+  const target = findStatusDevice(text, devices)
+  if (!target) {
+    return '어떤 가전의 상태를 알려드릴까요? 세탁기, TV, 냉장고처럼 말씀해 주세요.'
+  }
+  const runtime = target.device?.runtime || target.device?.state || {}
+
+  if (target.type === 'WASHER') {
+    const powerOn = Boolean(runtime.powerOn ?? true)
+    if (!powerOn) return '세탁기 전원이 꺼져 있습니다.'
+    if (runtime.statusCode === 'DONE') return '세탁이 완료되었습니다.'
+    const minutes = clampVoiceNumber(runtime.remainingMinutes ?? 14, 0, 60)
+    return `세탁기 ${minutes}분 남았습니다.`
+  }
+
+  if (target.type === 'RANGE') {
+    if (!runtime.powerOn) return '전기레인지 전원이 꺼져 있습니다.'
+    return runtime.cookingStatus === 'DONE'
+      ? '전기레인지 조리가 완료되었습니다.'
+      : '전기레인지가 조리 중입니다.'
+  }
+
+  if (target.type === 'TV') {
+    if (!runtime.powerOn) return 'TV 전원이 꺼져 있습니다.'
+    return `TV 전원이 켜져 있고, 볼륨은 ${clampVoiceNumber(runtime.volume ?? 12, 0, 100)}, 채널은 ${clampVoiceNumber(runtime.channel ?? 7, 0, 100)}입니다.`
+  }
+
+  if (target.type === 'REFRIGERATOR') {
+    return runtime.doorOpen ? '냉장고 문이 열려 있습니다.' : '냉장고 문이 닫혀 있습니다.'
+  }
+
+  if (target.type === 'DOOR_SENSOR') {
+    return runtime.doorOpen ? '문이 열려 있습니다.' : '문이 닫혀 있습니다.'
+  }
+
+  if (target.type === 'AIR_SENSOR') {
+    const label = { GOOD: '좋음', NORMAL: '보통', BAD: '나쁨' }[runtime.airQuality] || '좋음'
+    return `공기질은 ${label}입니다.`
+  }
+
+  return `${target.label} 상태를 확인했습니다.`
+}
+
+function findStatusDevice(text, devices = []) {
+  const normalized = normalizeSpeechText(text)
+  const matches = [
+    { type: 'WASHER', label: '세탁기', keywords: ['세탁기', '빨래'] },
+    { type: 'RANGE', label: '전기레인지', keywords: ['전기레인지', '안전전기레인지', '인덕션', '레인지'] },
+    { type: 'TV', label: 'TV', keywords: ['tv', '티비', '텔레비전'] },
+    { type: 'REFRIGERATOR', label: '냉장고', keywords: ['냉장고'] },
+    { type: 'DOOR_SENSOR', label: '도어센서', keywords: ['도어센서', '문센서', '문'] },
+    { type: 'AIR_SENSOR', label: '공기질 센서', keywords: ['공기질', '공기질센서', '공기'] },
+  ]
+  const match = matches.find((item) =>
+    item.keywords.some((keyword) => normalized.includes(normalizeSpeechText(keyword))),
+  )
+  if (!match) {
+    return null
+  }
+  return {
+    ...match,
+    device: devices.find((device) => device.type === match.type) || null,
+  }
+}
+
+function clampVoiceNumber(value, min, max) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return min
+  return Math.min(max, Math.max(min, Math.round(number)))
+}
+
 function isLocationStopCommand(text) {
   const normalized = normalizeSpeechText(text)
   return normalized.includes('위치안내') && ['멈춰', '중지', '종료', '그만', '꺼'].some((keyword) => normalized.includes(keyword))
@@ -2538,6 +2620,7 @@ function createDeviceContext(devices) {
   return {
     washer: washer
       ? {
+          powerOn: readDeviceValue(washer, 'powerOn'),
           status: readDeviceValue(washer, 'statusCode') || normalizeDeviceStatus(washer),
           remainingMinutes: readDeviceValue(washer, 'remainingMinutes'),
           error: isWarningDevice(washer),
@@ -2560,6 +2643,9 @@ function createDeviceContext(devices) {
       : null,
     tv: tv
       ? {
+          powerOn: readDeviceValue(tv, 'powerOn'),
+          volume: readDeviceValue(tv, 'volume'),
+          channel: readDeviceValue(tv, 'channel'),
           hasPopup: readDeviceValue(tv, 'hasPopup') || false,
           popupMessage: readDeviceValue(tv, 'popupMessage'),
         }
@@ -2567,6 +2653,7 @@ function createDeviceContext(devices) {
     range: range
       ? {
           powerOn: readDeviceValue(range, 'powerOn'),
+          cookingStatus: readDeviceValue(range, 'cookingStatus'),
           longOn: readDeviceValue(range, 'longOn') || isWarningDevice(range),
         }
       : null,

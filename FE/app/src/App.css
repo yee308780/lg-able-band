@@ -1327,6 +1327,114 @@ button:disabled {
   font-weight: 900;
 }
 
+.device-runtime-panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.device-runtime-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.device-runtime-header strong {
+  display: block;
+  margin-top: 2px;
+  color: #172033;
+  font-size: 1.04rem;
+}
+
+.device-runtime-chip {
+  max-width: 52%;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.device-runtime-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.device-runtime-summary-grid div {
+  min-height: 68px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.device-runtime-summary-grid span,
+.device-runtime-slider span {
+  display: block;
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.device-runtime-summary-grid strong {
+  display: block;
+  margin-top: 6px;
+  color: #172033;
+  font-size: 1rem;
+}
+
+.device-runtime-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.device-runtime-actions.two-columns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.device-runtime-actions.three-columns {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.device-runtime-actions .full-button {
+  min-height: 44px;
+  padding: 0 10px;
+}
+
+.device-runtime-slider {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.device-runtime-slider span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.device-runtime-slider strong {
+  color: #172033;
+  font-size: 0.92rem;
+}
+
+.device-runtime-slider input {
+  width: 100%;
+  accent-color: #2563eb;
+}
+
 .device-location-editor {
   display: grid;
   gap: 10px;

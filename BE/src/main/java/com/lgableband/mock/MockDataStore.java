@@ -29,7 +29,7 @@ public class MockDataStore {
 	private final AtomicLong userSequence = new AtomicLong(2);
 	private final AtomicLong guardianProfileSequence = new AtomicLong(1);
 	private final AtomicLong guardianSequence = new AtomicLong(1);
-	private final AtomicLong deviceSequence = new AtomicLong(10);
+	private final AtomicLong deviceSequence = new AtomicLong(30);
 	private final AtomicLong emergencySequence = new AtomicLong(300);
 	private final AtomicLong alertSequence = new AtomicLong(200);
 	private final AtomicLong eventSequence = new AtomicLong(600);
@@ -75,8 +75,8 @@ public class MockDataStore {
 			new Guardian(1, "김보호", "010-0000-0000", true, true, ConnectionStatus.CONNECTED)
 		)));
 		this.devicesByUserId.put(1L, new ArrayList<>(List.of(
-			new Device(10, "세탁기", DeviceType.WASHER, ConnectionStatus.CONNECTED, true, OffsetDateTime.now().minusMinutes(10), "세탁실"),
-			new Device(13, "도어센서", DeviceType.DOOR_SENSOR, ConnectionStatus.CONNECTED, true, OffsetDateTime.now().minusMinutes(4), "현관")
+			new Device(10, "세탁기", DeviceType.WASHER, ConnectionStatus.CONNECTED, true, OffsetDateTime.now().minusMinutes(10), "세탁실", defaultRuntime(DeviceType.WASHER)),
+			new Device(13, "도어센서", DeviceType.DOOR_SENSOR, ConnectionStatus.CONNECTED, true, OffsetDateTime.now().minusMinutes(4), "현관", defaultRuntime(DeviceType.DOOR_SENSOR))
 		)));
 		this.alertsByUserId.put(1L, new ArrayList<>(List.of(
 			new Alert(101, AlertType.LIFE, Severity.LOW, "세탁 완료", "세탁이 완료되었습니다. 건조기로 옮겨주세요.", "세탁기", OffsetDateTime.now().minusMinutes(20), AlertStatus.UNREAD, "세탁기 완료 알림입니다."),
@@ -88,7 +88,14 @@ public class MockDataStore {
 		)));
 		this.emergenciesByUserId.put(1L, new ArrayList<>());
 		this.guardiansByUserId.put(2L, new ArrayList<>());
-		this.devicesByUserId.put(2L, new ArrayList<>());
+		this.devicesByUserId.put(2L, new ArrayList<>(List.of(
+			new Device(21, "도어센서", DeviceType.DOOR_SENSOR, ConnectionStatus.CONNECTED, true, OffsetDateTime.now().minusMinutes(6), "현관", defaultRuntime(DeviceType.DOOR_SENSOR)),
+			new Device(22, "안전 전기레인지", DeviceType.RANGE, ConnectionStatus.CONNECTED, true, OffsetDateTime.now().minusMinutes(5), "주방", defaultRuntime(DeviceType.RANGE)),
+			new Device(23, "TV", DeviceType.TV, ConnectionStatus.CONNECTED, true, OffsetDateTime.now().minusMinutes(4), "거실", defaultRuntime(DeviceType.TV)),
+			new Device(24, "냉장고", DeviceType.REFRIGERATOR, ConnectionStatus.CONNECTED, true, OffsetDateTime.now().minusMinutes(3), "주방", defaultRuntime(DeviceType.REFRIGERATOR)),
+			new Device(25, "세탁기", DeviceType.WASHER, ConnectionStatus.CONNECTED, true, OffsetDateTime.now().minusMinutes(2), "세탁실", defaultRuntime(DeviceType.WASHER)),
+			new Device(26, "공기질 센서", DeviceType.AIR_SENSOR, ConnectionStatus.CONNECTED, true, OffsetDateTime.now().minusMinutes(1), "거실", defaultRuntime(DeviceType.AIR_SENSOR))
+		)));
 		this.alertsByUserId.put(2L, new ArrayList<>());
 		this.eventsByUserId.put(2L, new ArrayList<>());
 		this.emergenciesByUserId.put(2L, new ArrayList<>());
@@ -235,31 +242,58 @@ public class MockDataStore {
 			ConnectionStatus.CONNECTED,
 			locationSupported,
 			OffsetDateTime.now(),
-			room
+			room,
+			defaultRuntime(type)
 		);
 		this.devicesByUserId.computeIfAbsent(userId, ignored -> new ArrayList<>()).add(0, device);
 		return device;
 	}
 
-	public Device updateDeviceRoom(long userId, long deviceId, String room) {
+	public Device updateDevice(long userId, long deviceId, String room, Map<String, Object> runtime) {
 		List<Device> devices = this.devicesByUserId.getOrDefault(userId, List.of());
 		for (int index = 0; index < devices.size(); index += 1) {
 			Device device = devices.get(index);
 			if (device.deviceId() == deviceId && device.connectionStatus() != ConnectionStatus.DISCONNECTED) {
+				Map<String, Object> nextRuntime = runtime == null || runtime.isEmpty()
+					? device.runtime()
+					: Map.copyOf(runtime);
 				Device updated = new Device(
 					device.deviceId(),
 					device.name(),
 					device.type(),
 					device.connectionStatus(),
 					device.locationSupported(),
-					device.lastEventAt(),
-					room
+					OffsetDateTime.now(),
+					room == null ? device.room() : room,
+					nextRuntime
 				);
 				devices.set(index, updated);
 				return updated;
 			}
 		}
 		return null;
+	}
+
+	private static Map<String, Object> defaultRuntime(DeviceType type) {
+		return switch (type) {
+			case WASHER -> Map.of(
+				"powerOn", true,
+				"statusCode", "RUNNING",
+				"remainingMinutes", 14
+			);
+			case RANGE -> Map.of(
+				"powerOn", false,
+				"cookingStatus", "IDLE"
+			);
+			case TV -> Map.of(
+				"powerOn", false,
+				"volume", 12,
+				"channel", 7
+			);
+			case DOOR_SENSOR, REFRIGERATOR -> Map.of("doorOpen", false);
+			case AIR_SENSOR -> Map.of("airQuality", "GOOD");
+			default -> Map.of();
+		};
 	}
 
 	public List<Alert> alerts(long userId, AlertType type, AlertStatus status, int limit) {
@@ -629,7 +663,11 @@ public class MockDataStore {
 	public record NotificationPrefs(List<NotificationChannel> channels, boolean highContrast, boolean largeText) {
 	}
 
-	public record Device(long deviceId, String name, DeviceType type, ConnectionStatus connectionStatus, boolean locationSupported, OffsetDateTime lastEventAt, String room) {
+	public record Device(long deviceId, String name, DeviceType type, ConnectionStatus connectionStatus, boolean locationSupported, OffsetDateTime lastEventAt, String room, Map<String, Object> runtime) {
+
+		public Device(long deviceId, String name, DeviceType type, ConnectionStatus connectionStatus, boolean locationSupported, OffsetDateTime lastEventAt, String room) {
+			this(deviceId, name, type, connectionStatus, locationSupported, lastEventAt, room, defaultRuntime(type));
+		}
 	}
 
 	public record Alert(long alertId, AlertType type, Severity severity, String title, String message, String deviceName, OffsetDateTime occurredAt, AlertStatus status, String voiceGuide) {

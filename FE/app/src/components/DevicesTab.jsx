@@ -130,6 +130,10 @@ export function DevicesTab({ devices = [], uwb, onDevicesChange }) {
     deletingDeviceId: null,
     error: '',
   })
+  const [runtimeSaveState, setRuntimeSaveState] = useState({
+    saving: false,
+    error: '',
+  })
 
   const bleGuide = useBleProximityGuide()
 
@@ -179,6 +183,7 @@ export function DevicesTab({ devices = [], uwb, onDevicesChange }) {
     setSelectedDeviceId(deviceId)
     setConnectionMessage('')
     setLocationSaveState({ saving: false, error: '' })
+    setRuntimeSaveState({ saving: false, error: '' })
     setEditingLocationDeviceId(null)
     setDeleteState({ confirmingDeviceId: null, deletingDeviceId: null, error: '' })
   }
@@ -366,6 +371,61 @@ export function DevicesTab({ devices = [], uwb, onDevicesChange }) {
       setLocationSaveState({
         saving: false,
         error: error.message || '가전 위치 저장에 실패했습니다.',
+      })
+    }
+  }
+
+  async function handleRuntimeChange(nextRuntime) {
+    if (!selectedDevice) {
+      return
+    }
+
+    const mergedRuntime = normalizeRuntimeForDevice(selectedDevice.type, {
+      ...selectedDevice.runtime,
+      ...nextRuntime,
+    })
+    setRuntimeSaveState({ saving: true, error: '' })
+
+    const optimisticDevice = enrichDevice(
+      {
+        ...selectedDevice,
+        runtime: mergedRuntime,
+        lastEventAt: new Date().toISOString(),
+      },
+      catalogByType,
+    )
+    const optimisticDevices = connectedDevices.map((device) =>
+      device.deviceId === selectedDevice.deviceId ? optimisticDevice : device,
+    )
+    setConnectedDevices(optimisticDevices)
+    onDevicesChange?.(optimisticDevices)
+
+    try {
+      const savedDevice = await updateDevice(selectedDevice.deviceId, {
+        room: selectedDevice.room || selectedDevice.locationName || selectedDevice.templateRoom || '',
+        runtime: mergedRuntime,
+      })
+      const nextDevice = enrichDevice(
+        {
+          ...optimisticDevice,
+          ...savedDevice,
+          runtime: savedDevice.runtime || mergedRuntime,
+        },
+        catalogByType,
+      )
+      const nextDevices = optimisticDevices.map((device) =>
+        device.deviceId === selectedDevice.deviceId ? nextDevice : device,
+      )
+      setConnectedDevices(nextDevices)
+      onDevicesChange?.(nextDevices)
+      setRuntimeSaveState({ saving: false, error: '' })
+      setConnectionMessage(`${nextDevice.name} 상태를 저장했습니다.`)
+    } catch (error) {
+      setConnectedDevices(connectedDevices)
+      onDevicesChange?.(connectedDevices)
+      setRuntimeSaveState({
+        saving: false,
+        error: error.message || '가전 상태 저장에 실패했습니다.',
       })
     }
   }
@@ -689,6 +749,12 @@ export function DevicesTab({ devices = [], uwb, onDevicesChange }) {
               <dd>{selectedDevice.primarySignal}</dd>
             </div>
           </dl>
+          <DeviceRuntimePanel
+            device={selectedDevice}
+            disabled={runtimeSaveState.saving}
+            error={runtimeSaveState.error}
+            onChange={handleRuntimeChange}
+          />
           {deleteState.error ? (
             <p className="form-error" role="alert">
               {deleteState.error}
@@ -794,6 +860,235 @@ export function DevicesTab({ devices = [], uwb, onDevicesChange }) {
   )
 }
 
+function DeviceRuntimePanel({ device, disabled, error, onChange }) {
+  const runtime = normalizeRuntimeForDevice(device.type, device.runtime)
+  const summary = deviceRuntimeSummary(device.type, runtime)
+
+  function updateRuntime(partial) {
+    onChange?.(normalizeRuntimeForDevice(device.type, { ...runtime, ...partial }))
+  }
+
+  return (
+    <section className="device-runtime-panel" aria-label={`${device.name} AI 응답용 상태`}>
+      <div className="device-runtime-header">
+        <div>
+          <p className="card-label">AI 응답용 상태</p>
+          <strong>{summary.title}</strong>
+        </div>
+        <span className="device-runtime-chip">{summary.voiceText}</span>
+      </div>
+
+      <div className="device-runtime-summary-grid">
+        {summary.items.map((item) => (
+          <div key={item.label}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </div>
+        ))}
+      </div>
+
+      {device.type === 'DOOR_SENSOR' || device.type === 'REFRIGERATOR' ? (
+        <div className="device-runtime-actions two-columns">
+          <button
+            className={!runtime.doorOpen ? 'primary-button full-button' : 'secondary-button full-button'}
+            type="button"
+            disabled={disabled}
+            onClick={() => updateRuntime({ doorOpen: false })}
+          >
+            문 닫힘
+          </button>
+          <button
+            className={runtime.doorOpen ? 'primary-button full-button' : 'secondary-button full-button'}
+            type="button"
+            disabled={disabled}
+            onClick={() => updateRuntime({ doorOpen: true })}
+          >
+            문 열림
+          </button>
+        </div>
+      ) : null}
+
+      {device.type === 'RANGE' ? (
+        <>
+          <div className="device-runtime-actions two-columns">
+            <button
+              className={runtime.powerOn ? 'primary-button full-button' : 'secondary-button full-button'}
+              type="button"
+              disabled={disabled}
+              onClick={() => updateRuntime({ powerOn: true, cookingStatus: runtime.cookingStatus || 'COOKING' })}
+            >
+              전원 on
+            </button>
+            <button
+              className={!runtime.powerOn ? 'primary-button full-button' : 'secondary-button full-button'}
+              type="button"
+              disabled={disabled}
+              onClick={() => updateRuntime({ powerOn: false, cookingStatus: 'IDLE' })}
+            >
+              전원 off
+            </button>
+          </div>
+          {runtime.powerOn ? (
+            <div className="device-runtime-actions two-columns">
+              <button
+                className={runtime.cookingStatus === 'COOKING' ? 'primary-button full-button' : 'secondary-button full-button'}
+                type="button"
+                disabled={disabled}
+                onClick={() => updateRuntime({ cookingStatus: 'COOKING' })}
+              >
+                조리 중
+              </button>
+              <button
+                className={runtime.cookingStatus === 'DONE' ? 'primary-button full-button' : 'secondary-button full-button'}
+                type="button"
+                disabled={disabled}
+                onClick={() => updateRuntime({ cookingStatus: 'DONE' })}
+              >
+                조리 완료
+              </button>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+
+      {device.type === 'TV' ? (
+        <>
+          <div className="device-runtime-actions two-columns">
+            <button
+              className={runtime.powerOn ? 'primary-button full-button' : 'secondary-button full-button'}
+              type="button"
+              disabled={disabled}
+              onClick={() => updateRuntime({ powerOn: true })}
+            >
+              전원 on
+            </button>
+            <button
+              className={!runtime.powerOn ? 'primary-button full-button' : 'secondary-button full-button'}
+              type="button"
+              disabled={disabled}
+              onClick={() => updateRuntime({ powerOn: false })}
+            >
+              전원 off
+            </button>
+          </div>
+          <RuntimeSlider
+            label="볼륨"
+            value={runtime.volume}
+            disabled={disabled}
+            onChange={(value) => updateRuntime({ volume: value })}
+          />
+          <RuntimeSlider
+            label="채널"
+            value={runtime.channel}
+            disabled={disabled}
+            onChange={(value) => updateRuntime({ channel: value })}
+          />
+        </>
+      ) : null}
+
+      {device.type === 'WASHER' ? (
+        <>
+          <div className="device-runtime-actions two-columns">
+            <button
+              className={runtime.powerOn ? 'primary-button full-button' : 'secondary-button full-button'}
+              type="button"
+              disabled={disabled}
+              onClick={() => updateRuntime({ powerOn: true, statusCode: runtime.statusCode || 'RUNNING' })}
+            >
+              전원 on
+            </button>
+            <button
+              className={!runtime.powerOn ? 'primary-button full-button' : 'secondary-button full-button'}
+              type="button"
+              disabled={disabled}
+              onClick={() => updateRuntime({ powerOn: false, statusCode: 'IDLE' })}
+            >
+              전원 off
+            </button>
+          </div>
+          {runtime.powerOn ? (
+            <>
+              <div className="device-runtime-actions two-columns">
+                <button
+                  className={runtime.statusCode === 'RUNNING' ? 'primary-button full-button' : 'secondary-button full-button'}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => updateRuntime({ statusCode: 'RUNNING', remainingMinutes: Math.max(1, runtime.remainingMinutes || 14) })}
+                >
+                  세탁 중
+                </button>
+                <button
+                  className={runtime.statusCode === 'DONE' ? 'primary-button full-button' : 'secondary-button full-button'}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => updateRuntime({ statusCode: 'DONE', remainingMinutes: 0 })}
+                >
+                  세탁 완료
+                </button>
+              </div>
+              {runtime.statusCode === 'RUNNING' ? (
+                <RuntimeSlider
+                  label="남은 시간"
+                  value={runtime.remainingMinutes}
+                  max={60}
+                  suffix="분"
+                  disabled={disabled}
+                  onChange={(value) => updateRuntime({ remainingMinutes: value })}
+                />
+              ) : null}
+            </>
+          ) : null}
+        </>
+      ) : null}
+
+      {device.type === 'AIR_SENSOR' ? (
+        <div className="device-runtime-actions three-columns">
+          {[
+            ['GOOD', '좋음'],
+            ['NORMAL', '보통'],
+            ['BAD', '나쁨'],
+          ].map(([value, label]) => (
+            <button
+              className={runtime.airQuality === value ? 'primary-button full-button' : 'secondary-button full-button'}
+              key={value}
+              type="button"
+              disabled={disabled}
+              onClick={() => updateRuntime({ airQuality: value })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {error ? (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </section>
+  )
+}
+
+function RuntimeSlider({ label, value, max = 100, suffix = '', disabled, onChange }) {
+  return (
+    <label className="device-runtime-slider">
+      <span>
+        {label}
+        <strong>{value}{suffix}</strong>
+      </span>
+      <input
+        type="range"
+        min="0"
+        max={max}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+    </label>
+  )
+}
+
 function createEmptyDraft() {
   return {
     vendor: 'LG_THINQ',
@@ -804,6 +1099,138 @@ function createEmptyDraft() {
     locationSupported: false,
     remoteEnabled: false,
   }
+}
+
+function normalizeRuntimeForDevice(type, runtime = {}) {
+  if (type === 'WASHER') {
+    const powerOn = Boolean(runtime.powerOn ?? true)
+    const statusCode = powerOn ? runtime.statusCode || 'RUNNING' : 'IDLE'
+    const remainingMinutes = clampNumber(runtime.remainingMinutes ?? 14, 0, 60)
+    return {
+      powerOn,
+      statusCode,
+      remainingMinutes: statusCode === 'DONE' || !powerOn ? 0 : remainingMinutes,
+    }
+  }
+
+  if (type === 'RANGE') {
+    const powerOn = Boolean(runtime.powerOn)
+    return {
+      powerOn,
+      cookingStatus: powerOn ? runtime.cookingStatus || 'COOKING' : 'IDLE',
+    }
+  }
+
+  if (type === 'TV') {
+    return {
+      powerOn: Boolean(runtime.powerOn),
+      volume: clampNumber(runtime.volume ?? 12, 0, 100),
+      channel: clampNumber(runtime.channel ?? 7, 0, 100),
+    }
+  }
+
+  if (type === 'DOOR_SENSOR' || type === 'REFRIGERATOR') {
+    return {
+      doorOpen: Boolean(runtime.doorOpen),
+    }
+  }
+
+  if (type === 'AIR_SENSOR') {
+    const allowed = ['GOOD', 'NORMAL', 'BAD']
+    return {
+      airQuality: allowed.includes(runtime.airQuality) ? runtime.airQuality : 'GOOD',
+    }
+  }
+
+  return runtime || {}
+}
+
+function deviceRuntimeSummary(type, runtime) {
+  if (type === 'WASHER') {
+    const power = runtime.powerOn ? '전원 on' : '전원 off'
+    const state = !runtime.powerOn
+      ? '대기'
+      : runtime.statusCode === 'DONE'
+        ? '세탁 완료'
+        : `${runtime.remainingMinutes}분 남음`
+    return {
+      title: '세탁기',
+      voiceText: !runtime.powerOn
+        ? '세탁기 전원이 꺼져 있습니다.'
+        : runtime.statusCode === 'DONE'
+          ? '세탁이 완료되었습니다.'
+          : `세탁기 ${runtime.remainingMinutes}분 남았습니다.`,
+      items: [
+        { label: '전원 상태', value: power },
+        { label: '세탁 상태', value: state },
+      ],
+    }
+  }
+
+  if (type === 'RANGE') {
+    const cookingLabel = runtime.cookingStatus === 'DONE' ? '조리 완료' : runtime.powerOn ? '조리 중' : '대기'
+    return {
+      title: '안전 전기레인지',
+      voiceText: runtime.powerOn ? `전기레인지 ${cookingLabel}입니다.` : '전기레인지 전원이 꺼져 있습니다.',
+      items: [
+        { label: '전원 상태', value: runtime.powerOn ? '전원 on' : '전원 off' },
+        { label: '동작 상태', value: cookingLabel },
+      ],
+    }
+  }
+
+  if (type === 'TV') {
+    return {
+      title: 'TV',
+      voiceText: runtime.powerOn
+        ? `TV 전원이 켜져 있고, 볼륨은 ${runtime.volume}, 채널은 ${runtime.channel}입니다.`
+        : 'TV 전원이 꺼져 있습니다.',
+      items: [
+        { label: '전원 상태', value: runtime.powerOn ? '전원 on' : '전원 off' },
+        { label: '볼륨', value: runtime.volume },
+        { label: '채널', value: runtime.channel },
+      ],
+    }
+  }
+
+  if (type === 'REFRIGERATOR') {
+    return {
+      title: '냉장고',
+      voiceText: runtime.doorOpen ? '냉장고 문이 열려 있습니다.' : '냉장고 문이 닫혀 있습니다.',
+      items: [{ label: '문 상태', value: runtime.doorOpen ? '문 열림' : '문 닫힘' }],
+    }
+  }
+
+  if (type === 'DOOR_SENSOR') {
+    return {
+      title: '도어센서',
+      voiceText: runtime.doorOpen ? '문이 열려 있습니다.' : '문이 닫혀 있습니다.',
+      items: [{ label: '문 상태', value: runtime.doorOpen ? '문 열림' : '문 닫힘' }],
+    }
+  }
+
+  if (type === 'AIR_SENSOR') {
+    const label = { GOOD: '좋음', NORMAL: '보통', BAD: '나쁨' }[runtime.airQuality] || '좋음'
+    return {
+      title: '공기질 센서',
+      voiceText: `공기질은 ${label}입니다.`,
+      items: [{ label: '공기질', value: label }],
+    }
+  }
+
+  return {
+    title: '기기 상태',
+    voiceText: '기기 상태를 확인했습니다.',
+    items: [],
+  }
+}
+
+function clampNumber(value, min, max) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) {
+    return min
+  }
+  return Math.min(max, Math.max(min, Math.round(number)))
 }
 
 function getDeviceVendorId(device) {

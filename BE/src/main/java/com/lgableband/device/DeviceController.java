@@ -5,6 +5,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
+import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -61,7 +62,7 @@ public class DeviceController {
 		return this.deviceService.updateDevice(
 			authorization,
 			deviceId,
-			new DeviceService.DeviceUpdateRequest(request.room())
+			new DeviceService.DeviceUpdateRequest(request.room(), request.runtime())
 		);
 	}
 
@@ -88,6 +89,6 @@ public class DeviceController {
 	) {
 	}
 
-	public record DeviceUpdateRequest(String room) {
+	public record DeviceUpdateRequest(String room, Map<String, Object> runtime) {
 	}
 }

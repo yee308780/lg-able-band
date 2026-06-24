@@ -348,7 +348,8 @@ public class WearablePairingRepository {
 			DEFAULT_VENDOR,
 			rs.getString("linked_vendor_device_id"),
 			rs.getBoolean("linked_device_remote_enabled"),
-			null
+			null,
+			java.util.Map.of()
 		);
 	}
 
@@ -464,7 +465,8 @@ public class WearablePairingRepository {
 			DEFAULT_VENDOR,
 			vendorDeviceId,
 			true,
-			null
+			null,
+			java.util.Map.of()
 		);
 	}
 

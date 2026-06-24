@@ -25,7 +25,7 @@ const WAKE_TTS_START_DELAY_MS = 650
 const INTRO_SCREEN_MIN_MS = 2600
 const SPEECH_VOICE_READY_TIMEOUT_MS = 700
 const SPEECH_START_RETRY_MS = 450
-const USER_SILENCE_MS = 3000
+const USER_SILENCE_MS = 2500
 const WAITING_USER_TIMEOUT_MS = 14000
 const RECOGNITION_STUCK_RESTART_MS = 12000
 const MIN_USER_TRANSCRIPT_CHARS = 2
@@ -183,6 +183,7 @@ let speechFallbackTimer = null
 let speechHardFallbackTimer = null
 let chatbotSpeakingChangeHandler = null
 let speechQueue = Promise.resolve()
+let speechWarmupStarted = false
 let wearableChatbotInstanceSeq = 0
 let activeWakeOwnerId = null
 let lastWakeOpenAt = 0
@@ -862,6 +863,7 @@ export function VoiceChatbot({
         .flatMap((result) => getRecognitionAlternatives(result))
         .filter(Boolean)
       const hasMeaningfulTranscript = isMeaningfulTranscript(nextTranscript)
+      const hasFinalResult = Array.from(event.results).some((result) => result.isFinal)
 
       setTranscript(nextTranscript)
       if (nextTranscript) {
@@ -870,6 +872,7 @@ export function VoiceChatbot({
           transcript: nextTranscript,
           heardCandidates,
           isMeaningful: hasMeaningfulTranscript,
+          hasFinalResult,
           resultCount: event.results.length,
         })
       }
@@ -882,6 +885,11 @@ export function VoiceChatbot({
       clearWaitingUserTimer()
       setConversationState(CONVERSATION_STATE.USER_SPEAKING)
       setVoiceStatus('사용자 발화 중...')
+      if (hasFinalResult && !isProbablyIncompleteFinalTranscript(nextTranscript)) {
+        finishUserSpeech(nextTranscript)
+        return
+      }
+
       scheduleUserSpeechEnd(nextTranscript)
     }
 
@@ -1049,7 +1057,7 @@ export function VoiceChatbot({
     console.log('Wearable voice chatbot intent:', { text: spokenText, intent })
     setConversationState(CONVERSATION_STATE.PROCESSING)
     setIsRequesting(true)
-    setCurrentChatScreen('voiceAnswer')
+    setCurrentChatScreen('thinking')
     setVoiceStatus(`${intentDisplayTitle} 처리 중`)
     try {
       const actionResult = await handleVoiceIntent(intent, spokenText)
@@ -1571,6 +1579,7 @@ export function VoiceChatbot({
       }
       window.clearTimeout(wakeStartGuardTimerRef.current)
       console.log('[WearableVoice][wake] recognition onstart')
+      warmUpSpeechSynthesis()
       onWakeListeningChange?.(true)
       setVoiceStatus('챗봇 켜줘 라고 말하면 바로 시작해요.')
       wakeMatchedRef.current = false
@@ -2951,6 +2960,36 @@ function waitForSpeechVoices() {
   })
 }
 
+function warmUpSpeechSynthesis() {
+  if (speechWarmupStarted || !globalThis.speechSynthesis || !globalThis.SpeechSynthesisUtterance) {
+    return
+  }
+
+  speechWarmupStarted = true
+
+  try {
+    const synthesis = globalThis.speechSynthesis
+    synthesis.getVoices?.()
+
+    if (synthesis.speaking || synthesis.pending) {
+      return
+    }
+
+    const utterance = new SpeechSynthesisUtterance('준비')
+    utterance.lang = 'ko-KR'
+    utterance.rate = 1
+    utterance.pitch = 1
+    utterance.volume = 0
+    utterance.voice = findKoreanVoice()
+
+    synthesis.resume?.()
+    synthesis.speak(utterance)
+    synthesis.resume?.()
+  } catch {
+    // Speech synthesis warm-up is best-effort only.
+  }
+}
+
 function findKoreanVoice() {
   const voices = globalThis.speechSynthesis?.getVoices?.() || []
   return (
@@ -3710,6 +3749,14 @@ function hasApplianceStatusRequest(text) {
   return Boolean(
     getRequestedApplianceName(text) &&
       includesAny(text, ['상태', '확인', '알려', '읽어', '연결', '작동', '동작', '켜져', '꺼져']),
+  )
+}
+
+function isProbablyIncompleteFinalTranscript(text) {
+  const normalizedText = normalizeSpeechText(text)
+  return Boolean(
+    getRequestedApplianceName(normalizedText) &&
+      !includesAny(normalizedText, ['상태', '확인', '알려', '읽어', '연결', '작동', '동작', '켜져', '꺼져', '찾', '위치', '어디', '안내']),
   )
 }
 
