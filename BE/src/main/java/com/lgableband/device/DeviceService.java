@@ -19,6 +19,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 @Service
 public class DeviceService {
@@ -26,6 +29,7 @@ public class DeviceService {
 	private final ObjectProvider<JdbcTemplate> jdbcTemplateProvider;
 	private final MvpDataService dataService;
 	private final MockDataStore mockDataStore;
+	private final ObjectMapper objectMapper = JsonMapper.builder().build();
 
 	public DeviceService(
 		ObjectProvider<JdbcTemplate> jdbcTemplateProvider,
@@ -54,7 +58,8 @@ public class DeviceService {
 					null,
 					mockVendorDeviceId(device.type()),
 					false,
-					device.room()
+					device.room(),
+					device.runtime()
 				))
 				.toList();
 		}
@@ -69,6 +74,14 @@ public class DeviceService {
 			       d.vendor_device_id,
 			       d.remote_enabled,
 			       d.room,
+			       (
+			         SELECT de2.payload_json
+			         FROM device_event de2
+			         WHERE de2.device_id = d.device_id
+			           AND JSON_UNQUOTE(JSON_EXTRACT(de2.payload_json, '$.kind')) = 'DEVICE_RUNTIME_STATE'
+			         ORDER BY de2.occurred_at DESC, de2.event_id DESC
+			         LIMIT 1
+			       ) AS runtime_json,
 			       COALESCE(MAX(de.occurred_at), d.created_at) AS last_event_at
 			FROM device d
 			LEFT JOIN device_event de ON de.device_id = d.device_id
@@ -88,7 +101,8 @@ public class DeviceService {
 				null,
 				rs.getString("vendor_device_id"),
 				rs.getBoolean("remote_enabled"),
-				rs.getString("room")
+				rs.getString("room"),
+				parseRuntime(rs.getString("runtime_json"), DeviceType.valueOf(rs.getString("device_type")))
 			),
 			user.userId()
 		);
@@ -116,7 +130,8 @@ public class DeviceService {
 				request.vendor(),
 				request.vendorDeviceId(),
 				request.remoteEnabled(),
-				device.room()
+				device.room(),
+				device.runtime()
 			);
 		}
 
@@ -133,7 +148,8 @@ public class DeviceService {
 				request.vendor(),
 				request.vendorDeviceId(),
 				request.remoteEnabled(),
-				normalizeRoom(request.room())
+				normalizeRoom(request.room()),
+				defaultRuntime(request.type())
 			);
 		} catch (DuplicateKeyException ex) {
 			return reconnectExistingDevice(jdbcTemplate, user.userId(), request);
@@ -166,7 +182,8 @@ public class DeviceService {
 				request.vendor(),
 				request.vendorDeviceId(),
 				request.remoteEnabled(),
-				device.room()
+				device.room(),
+				device.runtime()
 			);
 		}
 
@@ -183,7 +200,8 @@ public class DeviceService {
 				request.vendor(),
 				request.vendorDeviceId(),
 				request.remoteEnabled(),
-				normalizeRoom(request.room())
+				normalizeRoom(request.room()),
+				defaultRuntime(request.type())
 			);
 		} catch (DuplicateKeyException ex) {
 			return claimExistingWearableDevice(jdbcTemplate, user.userId(), request);
@@ -194,12 +212,13 @@ public class DeviceService {
 		JdbcTemplate jdbcTemplate = jdbcTemplate();
 		MvpDataService.CurrentUser user = this.dataService.currentUser(authorization);
 		String room = normalizeRoom(request.room());
+		Map<String, Object> runtime = normalizeRuntime(request.runtime());
 		if (room == null) {
 			throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_DEVICE_ROOM", "가전 위치를 입력해 주세요.");
 		}
 
 		if (jdbcTemplate == null) {
-			MockDataStore.Device device = this.mockDataStore.updateDeviceRoom(user.userId(), deviceId, room);
+			MockDataStore.Device device = this.mockDataStore.updateDevice(user.userId(), deviceId, room, runtime);
 			if (device == null) {
 				throw new ApiException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "기기를 찾을 수 없습니다.");
 			}
@@ -213,7 +232,8 @@ public class DeviceService {
 				null,
 				mockVendorDeviceId(device.type()),
 				false,
-				device.room()
+				device.room(),
+				device.runtime()
 			);
 		}
 
@@ -232,6 +252,10 @@ public class DeviceService {
 		);
 		if (updated == 0) {
 			throw new ApiException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "기기를 찾을 수 없습니다.");
+		}
+
+		if (!runtime.isEmpty()) {
+			insertRuntimeEvent(jdbcTemplate, deviceId, runtime);
 		}
 
 		return devices(authorization).stream()
@@ -312,6 +336,18 @@ public class DeviceService {
 		);
 	}
 
+	private void insertRuntimeEvent(JdbcTemplate jdbcTemplate, long deviceId, Map<String, Object> runtime) {
+		jdbcTemplate.update(
+			"""
+			INSERT INTO device_event (device_id, event_type, event_level, payload_json, occurred_at)
+			VALUES (?, 'LIFE', 'LOW', ?, ?)
+			""",
+			deviceId,
+			runtimePayload(runtime),
+			LocalDateTime.now()
+		);
+	}
+
 	private DeviceSummary claimExistingWearableDevice(JdbcTemplate jdbcTemplate, long userId, DeviceCreateRequest request) {
 		String vendorDeviceId = blankToNull(request.vendorDeviceId());
 		if (vendorDeviceId == null) {
@@ -364,7 +400,8 @@ public class DeviceService {
 			request.vendor(),
 			request.vendorDeviceId(),
 			request.remoteEnabled(),
-			normalizeRoom(request.room())
+			normalizeRoom(request.room()),
+			defaultRuntime(request.type())
 		);
 	}
 
@@ -422,7 +459,8 @@ public class DeviceService {
 			request.vendor(),
 			request.vendorDeviceId(),
 			request.remoteEnabled(),
-			normalizeRoom(request.room())
+			normalizeRoom(request.room()),
+			defaultRuntime(request.type())
 		);
 	}
 
@@ -447,6 +485,50 @@ public class DeviceService {
 			payload.get("locationSupported"),
 			payload.get("remoteEnabled")
 		).trim();
+	}
+
+	private String runtimePayload(Map<String, Object> runtime) {
+		try {
+			return this.objectMapper.writeValueAsString(Map.of(
+				"kind", "DEVICE_RUNTIME_STATE",
+				"runtime", runtime
+			));
+		}
+		catch (JacksonException ex) {
+			throw new IllegalArgumentException("Device runtime payload cannot be serialized.", ex);
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private Map<String, Object> parseRuntime(String payloadJson, DeviceType type) {
+		if (payloadJson == null || payloadJson.isBlank()) {
+			return defaultRuntime(type);
+		}
+		try {
+			Map<String, Object> payload = this.objectMapper.readValue(payloadJson, Map.class);
+			Object runtime = payload.get("runtime");
+			if (runtime instanceof Map<?, ?> runtimeMap) {
+				return Map.copyOf((Map<String, Object>) runtimeMap);
+			}
+		}
+		catch (JacksonException ignored) {
+		}
+		return defaultRuntime(type);
+	}
+
+	private Map<String, Object> normalizeRuntime(Map<String, Object> runtime) {
+		return runtime == null ? Map.of() : Map.copyOf(runtime);
+	}
+
+	private Map<String, Object> defaultRuntime(DeviceType type) {
+		return switch (type) {
+			case WASHER -> Map.of("powerOn", true, "statusCode", "RUNNING", "remainingMinutes", 14);
+			case RANGE -> Map.of("powerOn", false, "cookingStatus", "IDLE");
+			case TV -> Map.of("powerOn", false, "volume", 12, "channel", 7);
+			case DOOR_SENSOR, REFRIGERATOR -> Map.of("doorOpen", false);
+			case AIR_SENSOR -> Map.of("airQuality", "GOOD");
+			default -> Map.of();
+		};
 	}
 
 	private OffsetDateTime toOffsetDateTime(LocalDateTime dateTime) {
@@ -494,8 +576,24 @@ public class DeviceService {
 		String vendor,
 		String vendorDeviceId,
 		boolean remoteEnabled,
-		String room
+		String room,
+		Map<String, Object> runtime
 	) {
+
+		public DeviceSummary(
+			long deviceId,
+			String name,
+			DeviceType type,
+			ConnectionStatus connectionStatus,
+			boolean locationSupported,
+			OffsetDateTime lastEventAt,
+			String vendor,
+			String vendorDeviceId,
+			boolean remoteEnabled,
+			String room
+		) {
+			this(deviceId, name, type, connectionStatus, locationSupported, lastEventAt, vendor, vendorDeviceId, remoteEnabled, room, Map.of());
+		}
 	}
 
 	public record DeviceCreateRequest(
@@ -509,7 +607,7 @@ public class DeviceService {
 	) {
 	}
 
-	public record DeviceUpdateRequest(String room) {
+	public record DeviceUpdateRequest(String room, Map<String, Object> runtime) {
 	}
 
 	private record DeviceRow(long deviceId, long userId) {

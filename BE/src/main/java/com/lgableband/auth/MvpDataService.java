@@ -6,6 +6,7 @@ import com.lgableband.common.AlertStatus;
 import com.lgableband.common.AlertType;
 import com.lgableband.common.ApiException;
 import com.lgableband.common.ConnectionStatus;
+import com.lgableband.common.DeviceType;
 import com.lgableband.common.NotificationChannel;
 import com.lgableband.common.SafetyStatusLevel;
 import com.lgableband.common.Severity;
@@ -119,6 +120,7 @@ public class MvpDataService {
 		}
 
 		ensureDemoAdminUser(jdbcTemplate);
+		ensureDemoAdminDevices(jdbcTemplate);
 		ensureDemoGuardianLink(jdbcTemplate);
 
 		DbAccount account = jdbcTemplate.query(
@@ -705,6 +707,101 @@ public class MvpDataService {
 		);
 	}
 
+	private void ensureDemoAdminDevices(JdbcTemplate jdbcTemplate) {
+		Long userId = jdbcTemplate.query(
+			"""
+			SELECT u.user_id
+			FROM account a
+			JOIN app_user u ON u.account_id = a.account_id
+			WHERE a.role = 'USER' AND LOWER(a.email) = LOWER(?)
+			""",
+			(rs, rowNum) -> rs.getLong("user_id"),
+			"admin@example.com"
+		).stream().findFirst().orElse(null);
+		if (userId == null) {
+			return;
+		}
+
+		List<DemoDevice> devices = List.of(
+			new DemoDevice(DeviceType.DOOR_SENSOR, "도어센서", "현관", "admin-demo-door-sensor", "{\"doorOpen\":false}"),
+			new DemoDevice(DeviceType.RANGE, "안전 전기레인지", "주방", "admin-demo-range", "{\"powerOn\":false,\"cookingStatus\":\"IDLE\"}"),
+			new DemoDevice(DeviceType.TV, "TV", "거실", "admin-demo-tv", "{\"powerOn\":false,\"volume\":12,\"channel\":7}"),
+			new DemoDevice(DeviceType.REFRIGERATOR, "냉장고", "주방", "admin-demo-refrigerator", "{\"doorOpen\":false}"),
+			new DemoDevice(DeviceType.WASHER, "세탁기", "세탁실", "admin-demo-washer", "{\"powerOn\":true,\"statusCode\":\"RUNNING\",\"remainingMinutes\":14}"),
+			new DemoDevice(DeviceType.AIR_SENSOR, "공기질 센서", "거실", "admin-demo-air-sensor", "{\"airQuality\":\"GOOD\"}")
+		);
+		for (DemoDevice device : devices) {
+			ensureDemoDevice(jdbcTemplate, userId, device);
+		}
+	}
+
+	private void ensureDemoDevice(JdbcTemplate jdbcTemplate, long userId, DemoDevice device) {
+		jdbcTemplate.update(
+			"""
+			INSERT INTO device (
+				user_id,
+				device_type,
+				vendor_device_id,
+				name,
+				room,
+				connection_status,
+				location_supported,
+				remote_enabled
+			)
+			SELECT ?, ?, ?, ?, ?, 'CONNECTED', TRUE, TRUE
+			WHERE NOT EXISTS (
+				SELECT 1 FROM device WHERE user_id = ? AND device_type = ?
+			)
+			""",
+			userId,
+			device.type().name(),
+			device.vendorDeviceId() + "-" + userId,
+			device.name(),
+			device.room(),
+			userId,
+			device.type().name()
+		);
+
+		Long deviceId = jdbcTemplate.query(
+			"""
+			SELECT device_id
+			FROM device
+			WHERE user_id = ? AND device_type = ?
+			ORDER BY updated_at DESC, device_id ASC
+			LIMIT 1
+			""",
+			(rs, rowNum) -> rs.getLong("device_id"),
+			userId,
+			device.type().name()
+		).stream().findFirst().orElse(null);
+		if (deviceId == null) {
+			return;
+		}
+
+		Integer runtimeCount = jdbcTemplate.queryForObject(
+			"""
+			SELECT COUNT(*)
+			FROM device_event
+			WHERE device_id = ?
+			  AND JSON_UNQUOTE(JSON_EXTRACT(payload_json, '$.kind')) = 'DEVICE_RUNTIME_STATE'
+			""",
+			Integer.class,
+			deviceId
+		);
+		if (runtimeCount != null && runtimeCount > 0) {
+			return;
+		}
+
+		jdbcTemplate.update(
+			"""
+			INSERT INTO device_event (device_id, event_type, event_level, payload_json, occurred_at)
+			VALUES (?, 'LIFE', 'LOW', ?, CURRENT_TIMESTAMP(6))
+			""",
+			deviceId,
+			"{\"kind\":\"DEVICE_RUNTIME_STATE\",\"runtime\":" + device.runtimeJson() + "}"
+		);
+	}
+
 	private void ensureDemoGuardianLink(JdbcTemplate jdbcTemplate) {
 		Long userId = jdbcTemplate.query(
 			"""
@@ -772,6 +869,9 @@ public class MvpDataService {
 	}
 
 	private record DbGuardian(long guardianId, long accountId, String name, String phone, String relationship) {
+	}
+
+	private record DemoDevice(DeviceType type, String name, String room, String vendorDeviceId, String runtimeJson) {
 	}
 
 	private record SessionPrincipal(long accountId, AccountRole role, Long userId, Long guardianId) {
