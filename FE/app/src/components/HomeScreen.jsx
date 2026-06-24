@@ -116,18 +116,7 @@ const connectionStatusLabels = {
 }
 
 function addLocalTestAlerts(alerts = []) {
-  if (import.meta.env.MODE !== 'development') {
-    return alerts
-  }
-
-  const existingAlertIds = new Set(alerts.map((alert) => alert.alertId))
-  const dismissedAlertIds = getDismissedLocalTestAlertIds()
-  return [
-    ...localTestAlerts.filter(
-      (alert) => !existingAlertIds.has(alert.alertId) && !dismissedAlertIds.has(alert.alertId),
-    ),
-    ...alerts,
-  ]
+  return alerts
 }
 
 function getDismissedLocalTestAlertIds() {
