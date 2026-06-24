@@ -152,6 +152,23 @@ export function DevicesTab({ devices = [], uwb, onDevicesChange }) {
   const isSelectedDeviceDeleting = Boolean(
     selectedDevice && deleteState.deletingDeviceId === selectedDevice.deviceId,
   )
+  const guideTarget = getGuideTarget(connectedDevices, selectedDevice, uwb)
+  const isGuideActive = bleGuide.isActive && bleGuide.targetName === guideTarget?.name
+  const distanceLabel =
+    bleGuide.distanceM != null
+      ? `${bleGuide.distanceM.toFixed(1)}m`
+      : uwb?.distanceM != null
+        ? `${Number(uwb.distanceM).toFixed(1)}m`
+        : '--.-m'
+  const guideCaption = isGuideActive
+    ? bleGuide.helperText
+    : uwb?.voiceGuide || '위치 안내를 시작하면 실시간 거리 표시가 나타납니다.'
+  const guideStatusLabel = isGuideActive
+    ? bleGuide.statusLabel || '연결 중'
+    : uwb?.targetName && guideTarget?.name === uwb.targetName
+      ? '안내 가능'
+      : '연결 대기'
+  const guideDeviceLabel = bleGuide.deviceLabel || 'ABLE-ESP'
 
   useEffect(() => {
     if (!connectionMessage) {
@@ -621,6 +638,45 @@ export function DevicesTab({ devices = [], uwb, onDevicesChange }) {
 
   return (
     <section className="tab-stack device-tab" aria-labelledby="connected-devices-title">
+      {guideTarget ? (
+        <section className="content-card uwb-card">
+          <div className="uwb-card-header">
+            <div>
+              <p className="card-label">UWB 위치 안내</p>
+              <strong className="card-title">{guideTarget.name} 찾기</strong>
+            </div>
+          </div>
+          <div className="uwb-distance-panel" aria-live="polite">
+            <strong className="uwb-distance-value">{distanceLabel}</strong>
+            <p className="uwb-distance-caption">{guideCaption}</p>
+          </div>
+          <div className="uwb-meta-row">
+            <span>{guideStatusLabel}</span>
+            <span>{guideDeviceLabel}</span>
+          </div>
+          <button
+            className="primary-button full-button"
+            type="button"
+            onClick={() => {
+              if (!guideTarget?.name) {
+                return
+              }
+
+              if (isGuideActive) {
+                bleGuide.stopGuide()
+                setConnectionMessage(`${guideTarget.name} 위치 안내를 종료했습니다.`)
+                return
+              }
+
+              bleGuide.startGuide(guideTarget.name)
+              setConnectionMessage(`${guideTarget.name} 위치 안내를 시작합니다.`)
+            }}
+          >
+            {isGuideActive ? '위치 안내 종료' : '위치 안내 시작'}
+          </button>
+        </section>
+      ) : null}
+
       <section className="content-card device-connected-card" aria-labelledby="connected-devices-title">
         <div className="section-title-row">
           <div>
